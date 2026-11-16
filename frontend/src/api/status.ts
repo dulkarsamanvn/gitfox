@@ -1,6 +1,5 @@
-export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL?.trim() || 'http://127.0.0.1:8001'
-).replace(/\/+$/, '');
+import axios from 'axios';
+import { apiClient } from './client';
 
 export type HealthEndpoint = '/health' | '/ready';
 
@@ -23,30 +22,12 @@ export async function checkService(
   endpoint: HealthEndpoint,
   signal: AbortSignal,
 ): Promise<ServiceStatus> {
-  const timeout = AbortSignal.timeout(8_000);
-
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      signal: AbortSignal.any([signal, timeout]),
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    });
+    const response = await apiClient.get<unknown>(endpoint, { signal });
 
-    if (!response.ok) {
-      return {
-        state: 'unhealthy',
-        detail: endpoint === '/ready' && response.status === 503
-          ? 'The API is responding, but PostgreSQL is not ready. Check the database and try again.'
-          : `The API returned HTTP ${response.status}. Try checking again.`,
-      };
-    }
-
-    const data: unknown = await response.json();
-    if (!validResponse(data, endpoint)) {
-      return {
-        state: 'unhealthy',
-        detail: 'The API returned an unexpected response. Check the backend and try again.',
-      };
+    // TypeScript checks our code; this check validates real data received at runtime.
+    if (!validResponse(response.data, endpoint)) {
+      throw new Error('The API returned an unexpected response. Check the backend and try again.');
     }
 
     return {
@@ -56,13 +37,23 @@ export async function checkService(
         : 'PostgreSQL is connected and responding.',
     };
   } catch (error) {
-    return {
-      state: 'unhealthy',
-      detail: timeout.aborted
-        ? 'The check timed out. Check the backend and try again.'
-        : error instanceof SyntaxError
-          ? 'The API returned an unexpected response. Check the backend and try again.'
-          : 'Could not complete the check. Make sure FastAPI is running and allows this frontend origin.',
-    };
+    // Let TanStack Query cancel requests when a component unmounts.
+    if (axios.isCancel(error)) throw error;
+
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+        throw new Error('The check timed out. Check the backend and try again.');
+      }
+      if (error.response && (error.response.status < 200 || error.response.status >= 300)) {
+        throw new Error(endpoint === '/ready' && error.response.status === 503
+          ? 'The API is responding, but PostgreSQL is not ready. Check the database and try again.'
+          : `The API returned HTTP ${error.response.status}. Try checking again.`);
+      }
+      if (error.code === 'ERR_BAD_RESPONSE') {
+        throw new Error('The API returned an unexpected response. Check the backend and try again.');
+      }
+      throw new Error('Could not complete the check. Make sure FastAPI is running and allows this frontend origin.');
+    }
+    throw error;
   }
 }

@@ -65,6 +65,58 @@ test('rejects a success status with an invalid response body', async ({ page }) 
   await expect(page.getByText('1 of 2 services ready')).toBeVisible();
 });
 
+test('replaces a cached healthy result when a later check fails', async ({ page }) => {
+  await healthyApi(page);
+  let available = true;
+  await page.route('**/ready', route => route.fulfill({
+    status: available ? 200 : 503,
+    json: available ? { status: 'ok', database: 'ok' } : { status: 'not_ready', database: 'unavailable' },
+    headers: { 'access-control-allow-origin': '*' },
+  }));
+  await page.goto('/');
+  await expect(page.getByText('2 of 2 services ready')).toBeVisible();
+
+  available = false;
+  await page.getByRole('button', { name: 'Check again' }).click();
+
+  await expect(page.getByRole('region', { name: 'PostgreSQL database' })).toContainText('Unavailable');
+  await expect(page.getByText('1 of 2 services ready')).toBeVisible();
+});
+
+test('rejects malformed JSON without displaying raw response text', async ({ page }) => {
+  await healthyApi(page);
+  await page.route('**/ready', route => route.fulfill({
+    body: 'private backend error text',
+    contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' },
+  }));
+  await page.goto('/');
+
+  await expect(page.getByRole('region', { name: 'PostgreSQL database' })).toContainText('unexpected response');
+  await expect(page.getByText('private backend error text')).toHaveCount(0);
+});
+
+test('reports a failed check while the browser is offline instead of pausing forever', async ({ page, context }) => {
+  let available = true;
+  for (const endpoint of ['/health', '/ready']) {
+    await page.route(`**${endpoint}`, route => available
+      ? route.fulfill({
+        json: { status: 'ok', database: 'ok' },
+        headers: { 'access-control-allow-origin': '*' },
+      })
+      : route.abort('internetdisconnected'));
+  }
+  await page.goto('/');
+  await expect(page.getByText('2 of 2 services ready')).toBeVisible();
+
+  available = false;
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Check again' }).click();
+
+  await expect(page.getByText('0 of 2 services ready')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check again' })).toBeEnabled();
+});
+
 test('finishes a slow check with a timeout instead of hanging', async ({ page }) => {
   await healthyApi(page);
   await page.route('**/ready', async route => {

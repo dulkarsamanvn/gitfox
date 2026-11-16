@@ -31,6 +31,12 @@ belong only in backend/.env.
 2. It validates each JSON response and displays the API and database status separately.
 3. Check again repeats the requests and updates the last-checked time.
 
+Axios makes the HTTP requests. TanStack Query manages their loading, error, cached
+data, and refresh state. Each endpoint has its own query, so they can resolve
+independently. Automatic retries, focus refresh, and reconnect refresh are disabled
+for this status page; Check again explicitly refetches both endpoints. A page mount
+also checks again. Offline checks are attempted rather than paused indefinitely.
+
 Each request has an eight-second timeout. An unavailable database does not mark a
 healthy API as unavailable. Errors show useful messages without displaying raw
 backend error bodies. There is no automatic polling.
@@ -41,12 +47,41 @@ The browser only calls FastAPI. FastAPI makes the PostgreSQL connection.
 
 | File | Purpose |
 |---|---|
-| src/main.tsx | Mounts React inside index.html. |
-| src/App.tsx | Renders the page, starts the checks, and handles refresh. |
-| src/api/status.ts | Makes requests, validates responses, and handles timeouts. |
+| src/main.tsx | Mounts React and provides the TanStack Query client. |
+| src/App.tsx | Renders the page using the status hook and handles Check again. |
+| src/hooks/useServiceStatus.ts | Uses TanStack Query to manage each endpoint's state. |
+| src/api/client.ts | Creates the shared Axios client, backend address, and timeout. |
+| src/api/status.ts | Calls Axios, validates responses, and translates errors into safe messages. |
 | src/index.css | Styles the desktop and mobile layouts. |
 | vite.config.ts | Enables React support in the Vite development/build tools. |
 | tsconfig.json | Configures TypeScript checks. |
+
+## TypeScript for a React developer
+
+React still uses components, props, hooks, and JSX. TypeScript adds checks for the
+types of values you pass around. A .tsx file is TypeScript containing JSX; a .ts
+file is ordinary TypeScript without JSX.
+
+For example:
+
+```tsx
+type TitleProps = { title: string };
+
+function Title({ title }: TitleProps) {
+  return <h2>{title}</h2>;
+}
+
+// Valid: <Title title="GitFox" />
+// Type error: <Title title={123} />
+```
+
+The type annotation helps catch the second usage while developing. The browser
+runs JavaScript after Vite removes the TypeScript annotations. npm run build also
+runs the TypeScript checker before bundling. TypeScript does not validate network
+responses at runtime, so the API helper still checks the JSON received from FastAPI.
+
+The request flow is App.tsx -> useServiceStatus -> Axios -> FastAPI. The hook gives
+App.tsx a status object to display; App.tsx no longer manages requests with useEffect.
 
 ## Verify
 
@@ -88,6 +123,7 @@ npm run test:e2e
 Playwright starts Vite for the tests or reuses a running development server. Browser
 reports and screenshots are ignored by Git.
 
-See the official [Vite guide](https://vite.dev/guide/) and
-[React effect documentation](https://react.dev/reference/react/useEffect) for the
-tools used here.
+See the official [Vite guide](https://vite.dev/guide/),
+[TypeScript React guide](https://www.typescriptlang.org/docs/handbook/react.html),
+[Axios documentation](https://axios-http.com/docs/intro), and
+[TanStack Query overview](https://tanstack.com/query/latest/docs/framework/react/overview).

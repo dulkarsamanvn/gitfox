@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { API_BASE_URL, checkService } from './api/status';
+import { API_BASE_URL } from './api/client';
 import type { HealthEndpoint, ServiceStatus } from './api/status';
+import { useServiceStatus } from './hooks/useServiceStatus';
 
-type Checks = { api: ServiceStatus; database: ServiceStatus };
 type IconName = 'check' | 'refresh' | 'api' | 'database' | 'arrow' | 'alert';
 
 function Icon({ name, className = '' }: { name: IconName; className?: string }) {
@@ -54,41 +53,19 @@ function ServiceCard({ title, kind, endpoint, status }: {
   );
 }
 
-function checkingState(): Checks {
-  return {
-    api: { state: 'checking', detail: 'Waiting for the API to respond…' },
-    database: { state: 'checking', detail: 'Checking the database connection…' },
-  };
-}
-
 export default function App() {
-  const [checks, setChecks] = useState<Checks>(checkingState);
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const controller = useRef<AbortController | null>(null);
+  const api = useServiceStatus('/health');
+  const database = useServiceStatus('/ready');
+  const checks = { api: api.status, database: database.status };
+  const lastCheckedAt = Math.max(api.checkedAt, database.checkedAt);
+  const lastChecked = lastCheckedAt ? new Date(lastCheckedAt) : null;
   const isChecking = checks.api.state === 'checking' || checks.database.state === 'checking';
   const healthyCount = Number(checks.api.state === 'healthy') + Number(checks.database.state === 'healthy');
 
-  const runChecks = useCallback(async () => {
-    controller.current?.abort();
-    const current = new AbortController();
-    controller.current = current;
-    setChecks(checkingState());
-
-    // Start both checks together, then publish one consistent result.
-    const [api, database] = await Promise.all([
-      checkService('/health', current.signal),
-      checkService('/ready', current.signal),
-    ]);
-    if (!current.signal.aborted) {
-      setChecks({ api, database });
-      setLastChecked(new Date());
-    }
-  }, []);
-
-  useEffect(() => {
-    void runChecks();
-    return () => controller.current?.abort();
-  }, [runChecks]);
+  function runChecks() {
+    void api.refetch();
+    void database.refetch();
+  }
 
   const headline = isChecking
     ? 'Checking your setup.'
@@ -141,7 +118,7 @@ export default function App() {
         </div>
 
         <div className="check-metadata">
-          <span><span className="metadata-dot" />{lastChecked ? `Last checked at ${lastChecked.toLocaleTimeString()}` : 'Waiting for the first check'}</span>
+          <span><span className="metadata-dot" />{isChecking ? 'Checking services…' : lastChecked ? `Last checked at ${lastChecked.toLocaleTimeString()}` : 'Waiting for the first check'}</span>
           <span className="backend-address">Backend <code>{API_BASE_URL}</code></span>
         </div>
 
