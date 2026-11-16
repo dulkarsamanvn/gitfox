@@ -65,6 +65,18 @@ def test_rejects_non_postgres_database_url() -> None:
         Settings(_env_file=None, database_url="https://example.com/database")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql+asyncpg://gitfox:fake-password@localhost:5433/gitfox",
+        "postgresql://gitfox:fake-password@host1:5433,host2:5433/gitfox",
+    ],
+)
+def test_rejects_unsupported_database_connections(url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, database_url=url)
+
+
 def test_credentials_are_hidden_from_settings_representation() -> None:
     settings = Settings(
         _env_file=None,

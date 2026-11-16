@@ -53,6 +53,16 @@ class Settings(BaseSettings):
                 )
         return origins
 
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: PostgresDsn | None) -> PostgresDsn | None:
+        if value is not None:
+            if value.scheme not in {"postgres", "postgresql", "postgresql+psycopg"}:
+                raise ValueError("DATABASE_URL must use PostgreSQL with the psycopg driver")
+            if len(value.hosts()) != 1:
+                raise ValueError("DATABASE_URL must specify a single database host")
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:

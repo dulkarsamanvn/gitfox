@@ -1,9 +1,11 @@
 from collections.abc import AsyncIterator
+from unittest.mock import Mock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
+from app.db.database import Database
 from app.main import create_app
 
 pytestmark = pytest.mark.anyio
@@ -55,3 +57,37 @@ async def test_cors_rejects_unconfigured_frontend(client: AsyncClient) -> None:
 
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
+
+
+async def test_readiness_without_database_configuration(client: AsyncClient) -> None:
+    response = await client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready", "database": "unavailable"}
+    assert (await client.get("/health")).status_code == 200
+
+
+@pytest.mark.parametrize("available", [True, False])
+async def test_readiness_reports_database_status(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, available: bool
+) -> None:
+    monkeypatch.setattr(Database, "is_ready", lambda self: available)
+
+    response = await client.get("/ready")
+
+    assert response.status_code == (200 if available else 503)
+    assert response.json() == {
+        "status": "ok" if available else "not_ready",
+        "database": "ok" if available else "unavailable",
+    }
+
+
+async def test_application_shutdown_closes_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    close = Mock()
+    monkeypatch.setattr(Database, "close", close)
+    application = create_app(Settings(_env_file=None))
+
+    async with application.router.lifespan_context(application):
+        pass
+
+    close.assert_called_once()

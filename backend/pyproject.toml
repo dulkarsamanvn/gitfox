@@ -2,6 +2,7 @@
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+markers = ["integration: requires an explicit TEST_DATABASE_URL and a running PostgreSQL server"]
 
 [tool.ruff]
 target-version = "py313"
