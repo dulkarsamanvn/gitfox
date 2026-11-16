@@ -38,6 +38,28 @@ also select psycopg). Other drivers and multiple database hosts are rejected.
 `http://localhost:5173,http://127.0.0.1:5173`. Wildcards, credentials, paths,
 queries, and fragments are rejected.
 
+## Where the database settings come from
+
+In Django, DATABASES in settings.py describes how the application connects. Here,
+app/core/config.py loads DATABASE_URL from backend/.env, and app/db/database.py
+uses it to establish SQLAlchemy connections.
+
+- POSTGRES_USER and POSTGRES_DB are set to gitfox in compose.yaml.
+- POSTGRES_PASSWORD comes from backend/.env. During the initial local setup,
+  a random password was generated and saved there.
+- Docker Compose uses that password to initialize the database account when
+  creating a new data volume.
+- DATABASE_URL gives FastAPI the matching connection details:
+
+```text
+postgresql+psycopg://gitfox:<password>@127.0.0.1:5433/gitfox
+```
+
+The parts are driver, username, password, host, port, and database name. Real
+credentials stay in the ignored backend/.env; .env.example has placeholders.
+Editing POSTGRES_PASSWORD after the database has been initialized does not change
+the existing PostgreSQL account's password.
+
 ## Start PostgreSQL
 
 Start Docker Desktop, then run from the repository root:
@@ -62,7 +84,53 @@ docker compose --env-file backend/.env stop db
 The application uses `app/db/database.py` to manage a shared SQLAlchemy connection
 pool through psycopg. Connections are opened when needed and closed on application
 shutdown. Connection, pool, and SQL statement timeouts bound readiness checks.
-Application tables and Alembic migrations are the next implementation step.
+
+## Create or update the tables
+
+With PostgreSQL running and DATABASE_URL configured:
+
+```powershell
+cd D:\GitFox\backend
+.\env\Scripts\python.exe -m alembic upgrade head
+.\env\Scripts\python.exe -m alembic current
+.\env\Scripts\python.exe -m alembic check
+```
+
+The initial migration creates:
+
+| Table | Purpose |
+|---|---|
+| reviews | PR identity, base/head SHA, status, coverage counts, summary, and timestamps |
+| findings | Evidence, severity, category, confidence, suggestion, and optional line location |
+| review_files | Reviewed/skipped file metadata and skip reasons |
+
+PostgreSQL generates UUID IDs and creation timestamps. Check constraints enforce
+allowed status/finding values, positive PR/line numbers, and valid coverage counts.
+Foreign keys link findings and files to their review, with cascade deletion.
+File paths are unique within each review. No raw repository files are retained.
+
+The files involved are:
+
+- app/db/base.py: shared SQLAlchemy model metadata.
+- app/models/: Python table definitions, similar to Django's models.py.
+- alembic/env.py: migration configuration using the existing DATABASE_URL.
+- alembic/versions/: versioned schema changes.
+- alembic.ini: migration paths and logging, with no database credentials.
+
+Alembic records the applied revision in its own alembic_version table. Run upgrade
+head after pulling new migrations; application startup does not create tables.
+
+When changing models later, generate and review a migration before applying it:
+
+```powershell
+.\env\Scripts\python.exe -m alembic revision --autogenerate -m "describe the schema change"
+.\env\Scripts\python.exe -m ruff check --fix alembic/versions
+.\env\Scripts\python.exe -m ruff format alembic/versions
+.\env\Scripts\python.exe -m alembic upgrade head
+```
+
+This corresponds to Django's makemigrations followed by migrate. Migration rollback
+tests run in disposable schemas so they do not drop application tables.
 
 ## Run
 
@@ -92,8 +160,8 @@ are not included in that response. `/health` still reports application liveness.
 .\env\Scripts\python.exe -m ruff format --check .
 ```
 
-Unit tests do not require a running database or API keys. The integration test is
-skipped unless `TEST_DATABASE_URL` is set. To run it using the current local settings:
+Unit tests do not require a running database or API keys. Integration tests are
+skipped unless `TEST_DATABASE_URL` is set. To run them using the current local settings:
 
 ```powershell
 .\env\Scripts\python.exe -c "import os, pytest; from app.core.config import get_settings; os.environ['TEST_DATABASE_URL'] = str(get_settings().database_url); raise SystemExit(pytest.main(['-m', 'integration', '-q']))"
