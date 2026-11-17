@@ -151,6 +151,36 @@ If the database is unavailable or not configured, `/ready` returns HTTP `503` wi
 `{"status":"not_ready","database":"unavailable"}`. Driver errors and credentials
 are not included in that response. `/health` still reports application liveness.
 
+## GitHub PR URL parser
+
+`app/integrations/github_url.py` validates a pasted PR URL and extracts the owner,
+repository, and positive PR number. It returns an immutable `PullRequestRef` with
+a normalized `pr_url`. This step validates syntax; GitHub retrieval and checking
+repository visibility come in the next step.
+
+```python
+from app.integrations.github_url import parse_pull_request_url
+
+reference = parse_pull_request_url("https://github.com/octocat/Hello-World/pull/123")
+# reference.owner == "octocat"
+# reference.repository == "Hello-World"
+# reference.pr_number == 123
+```
+
+Only HTTPS links on github.com with the path /OWNER/REPO/pull/NUMBER are accepted.
+One trailing slash is removed; scheme/hostname casing is normalized and identifier
+spelling is preserved. PR numbers use canonical decimal notation and fit the
+database's positive INTEGER range. Credentials, ports, query/fragment delimiters,
+encoded path segments, whitespace/control characters, and other paths are rejected.
+Invalid input raises `InvalidPullRequestURL` with the stable code `invalid_pr_url`;
+its message does not repeat the submitted URL.
+
+Run the focused tests from the backend directory:
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_github_url.py -q
+```
+
 ## Verify
 
 ```powershell
