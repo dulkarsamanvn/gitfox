@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests and migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Disposable CI credentials, unrelated to backend/.env or the local database.
+      DATABASE_URL: postgresql+psycopg://gitfox:gitfox_ci@127.0.0.1:5432/gitfox_test
+      TEST_DATABASE_URL: postgresql+psycopg://gitfox:gitfox_ci@127.0.0.1:5432/gitfox_test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gitfox
+          POSTGRES_PASSWORD: gitfox_ci
+          POSTGRES_DB: gitfox_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U gitfox -d gitfox_test"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Check dependency compatibility
+        run: python -m pip check
+
+      - name: Lint Python
+        run: python -m ruff check .
+
+      - name: Check Python formatting
+        run: python -m ruff format --check .
+
+      - name: Migrate the empty database
+        run: python -m alembic upgrade head
+
+      - name: Check the applied schema
+        run: |
+          python -m alembic current
+          python -m alembic check
+
+      - name: Run backend and PostgreSQL integration tests
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend build and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check TypeScript and build the frontend
+        run: npm run build
+
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests with mocked API responses
+        run: npm run test:e2e

@@ -1,5 +1,7 @@
 # GitFox
 
+[![CI](https://github.com/dulkarsamanvn/gitfox/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dulkarsamanvn/gitfox/actions/workflows/ci.yml)
+
 GitFox is being built to review public GitHub pull requests and present structured
 findings. The current foundation includes FastAPI, PostgreSQL, SQLAlchemy models,
 Alembic migrations, and a React + TypeScript status page.
@@ -49,3 +51,20 @@ GitHub retrieval and AI review features are planned for subsequent steps.
 Backend checks and database integration tests are documented in
 [backend/README.md](backend/README.md). Frontend type checking, production build,
 and browser tests are documented in [frontend/README.md](frontend/README.md).
+
+## Automatic checks on GitHub
+
+[CI](https://github.com/dulkarsamanvn/gitfox/actions/workflows/ci.yml) runs on pushes,
+pull requests, and manual requests from the Actions tab. The workflow is defined in
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and has two independent jobs:
+
+- Backend: Python 3.13, dependency compatibility, Ruff lint/format checks, migrations
+  from an empty PostgreSQL 17 database, schema consistency, and all backend tests.
+- Frontend: Node.js 22, a clean dependency install, TypeScript and production build,
+  and Playwright browser tests using Chromium and mocked API responses.
+
+GitHub creates a temporary test database for each backend job using the test-only
+credentials in the workflow. It does not need your local .env files or API keys.
+The separate live-browser test is opt-in locally; PostgreSQL integration tests run
+in the backend CI job. Open a job in the Actions tab to see which step passed or
+failed. Green checks mean both jobs completed successfully.
