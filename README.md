@@ -33,7 +33,7 @@ cd backend
 .\env\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-In a second terminal, start the frontend:
+In second terminal, start the frontend:
 
 ```powershell
 cd D:\GitFox\frontend
