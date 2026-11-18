@@ -1,4 +1,4 @@
-"""Read public PR metadata from GitHub without fetching arbitrary URLs."""
+"""Read public PR metadata and changed files without fetching arbitrary URLs."""
 
 import asyncio
 import json
@@ -9,11 +9,15 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
+from app.integrations.github_files import PullRequestFile
 from app.integrations.github_url import PullRequestRef, parse_pull_request_url
 
 _MAX_RESPONSE_BYTES = 1_048_576
 _MAX_ATTEMPTS = 2
 _REQUEST_DEADLINE_SECONDS = 15
+_FILES_DEADLINE_SECONDS = 60
+_FILES_PER_PAGE = 100
+_MAX_PR_FILES = 300
 _SHA = Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
 
 
@@ -41,6 +45,15 @@ class PullRequestMetadata(BaseModel):
     base_sha: _SHA
     head_sha: _SHA
     changed_files: int = Field(ge=0)
+
+
+class PullRequestFiles(BaseModel):
+    """A complete file list paired with its checked base/head commit metadata."""
+
+    model_config = ConfigDict(strict=True, frozen=True, hide_input_in_errors=True)
+
+    metadata: PullRequestMetadata
+    files: tuple[PullRequestFile, ...]
 
 
 class GitHubClient:
@@ -88,12 +101,67 @@ class GitHubClient:
         data = await self._get_json(path)
         return _parse_metadata(data, reference)
 
-    async def _get_json(self, path: str) -> object:
+    async def get_pull_request_files(self, pr_url: str) -> PullRequestFiles:
+        """Fetch every supported file page, or fail without returning a partial list."""
+        try:
+            async with asyncio.timeout(_FILES_DEADLINE_SECONDS):
+                return await self._get_pull_request_files(pr_url)
+        except TimeoutError:
+            raise GitHubClientError(
+                "github_timeout", "Fetching GitHub's changed files timed out. Try again later."
+            ) from None
+
+    async def _get_pull_request_files(self, pr_url: str) -> PullRequestFiles:
+        # This also checks visibility before reading file content with a token.
+        metadata = await self.get_pull_request(pr_url)
+        if metadata.changed_files > _MAX_PR_FILES:
+            raise GitHubClientError(
+                "github_too_many_files",
+                f"This pull request exceeds the {_MAX_PR_FILES}-file fetch limit.",
+            )
+        path = f"/repos/{metadata.owner}/{metadata.repository}/pulls/{metadata.pr_number}/files"
+        files: list[PullRequestFile] = []
+        filenames: set[str] = set()
+        pages = (metadata.changed_files + _FILES_PER_PAGE - 1) // _FILES_PER_PAGE
+        for page in range(1, pages + 1):
+            # Construct page requests locally; never follow URLs from Link/raw_url.
+            data = await self._get_json(path, params={"per_page": _FILES_PER_PAGE, "page": page})
+            if not isinstance(data, list) or len(data) > _FILES_PER_PAGE:
+                raise _invalid_response()
+            expected_count = min(_FILES_PER_PAGE, metadata.changed_files - len(files))
+            if len(data) != expected_count:
+                raise GitHubClientError(
+                    "github_incomplete_files",
+                    "GitHub returned an incomplete or changed file list. Try again later.",
+                )
+            for item in data:
+                try:
+                    file = PullRequestFile.model_validate(item)
+                except ValueError:
+                    raise _invalid_response() from None
+                if file.filename in filenames:
+                    raise _invalid_response()
+                filenames.add(file.filename)
+                files.append(file)
+        if files:
+            # Pagination is not a snapshot: reject PR updates during retrieval.
+            latest = await self.get_pull_request(pr_url)
+            if (latest.base_sha, latest.head_sha, latest.changed_files) != (
+                metadata.base_sha,
+                metadata.head_sha,
+                metadata.changed_files,
+            ):
+                raise GitHubClientError(
+                    "github_pr_changed", "The pull request changed while fetching files. Try again."
+                )
+        return PullRequestFiles(metadata=metadata, files=tuple(files))
+
+    async def _get_json(self, path: str, *, params: dict[str, int] | None = None) -> object:
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 # HTTPX timeouts bound inactivity; this also bounds slow streams.
                 async with asyncio.timeout(_REQUEST_DEADLINE_SECONDS):
-                    async with self._http.stream("GET", path) as response:
+                    async with self._http.stream("GET", path, params=params) as response:
                         if response.status_code >= 500:
                             raise GitHubClientError(
                                 "github_unavailable", "GitHub is unavailable. Try again later."
@@ -103,7 +171,7 @@ class GitHubClient:
                             if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
                                 raise GitHubClientError(
                                     "github_response_too_large",
-                                    "GitHub's PR metadata exceeded the response size limit.",
+                                    "GitHub's response exceeded the response size limit.",
                                 )
                             body.extend(chunk)
                         if response.status_code != 200:
@@ -128,7 +196,9 @@ class GitHubClient:
 
 
 def _invalid_response() -> GitHubClientError:
-    return GitHubClientError("github_invalid_response", "GitHub returned invalid PR metadata.")
+    return GitHubClientError(
+        "github_invalid_response", "GitHub returned invalid pull request data."
+    )
 
 
 def _response_error(response: httpx.Response, body: bytearray) -> GitHubClientError:

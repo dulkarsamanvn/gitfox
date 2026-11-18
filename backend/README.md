@@ -211,16 +211,63 @@ and missing PRs are returned immediately without retrying. `GitHubClientError`
 has a stable `code` and safe message; raw response bodies and credentials are
 not included. URL validation still raises `InvalidPullRequestURL`.
 
-This is a backend integration helper. It is not connected to an HTTP endpoint
-or the frontend yet. Fetching changed files and patches is the next part.
+These are backend integration helpers. Connecting them to an HTTP endpoint and
+the frontend comes in a later part.
 
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_github.py -q
 ```
 
+## GitHub changed files and patches
+
+`GitHubClient.get_pull_request_files(pr_url)` returns a `PullRequestFiles` with
+`metadata` and an immutable `files` tuple. Each `PullRequestFile` (defined in
+`app/integrations/github_files.py`) includes:
+
+- `filename`, `status`, and `previous_filename` for renames.
+- `additions`, `deletions`, and total `changes`.
+- `patch`: the untrusted diff text, or `None` when GitHub omits it. Empty patches
+  are preserved too. A missing patch does not prove a file is binary or unchanged.
+
+```python
+from app.integrations.github import GitHubClient
+
+
+async def read_changed_files(pr_url: str):
+    async with GitHubClient() as github:
+        result = await github.get_pull_request_files(pr_url)
+    return result.metadata, result.files
+```
+
+The reader checks public visibility first, then requests numbered pages of up to
+100 files. Page requests are built locally using the metadata's changed-file count;
+URLs in `Link`, `raw_url`, and `contents_url` are never fetched. Duplicate paths,
+unsafe relative paths, and invalid response fields are rejected. Normal relative
+paths with spaces and Unicode are preserved; absolute paths, Windows drive paths,
+backslashes, traversal segments, and control characters are unsupported.
+
+Fetching is limited to 300 files, 1 MiB per response, and a 60-second deadline for
+the whole operation, including metadata checks and retries. Larger PRs raise
+`github_too_many_files` before any file page is fetched. A count mismatch raises
+`github_incomplete_files`; no partial list is returned after any page fails.
+
+After fetching files, the reader checks the base SHA, head SHA, and changed-file
+count again. Updates raise `github_pr_changed`, allowing a later caller to start
+over. This detects updates during retrieval; GitHub's paginated files endpoint
+does not provide an atomic commit snapshot.
+
+Patches stay in memory and are excluded from model `repr` output. This helper
+does not save source code or mark any file as reviewed. Selecting reviewable
+patches and recording skipped-file reasons come next.
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_github.py tests/test_github_files.py -q
+```
+
 All client tests use HTTPX MockTransport; no real token or network is needed.
 The client follows GitHub's [PR endpoint](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request)
-and [rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+and [files endpoint](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files),
+with [rate-limit handling](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 ## Verify
 
