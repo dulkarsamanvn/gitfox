@@ -155,8 +155,8 @@ are not included in that response. `/health` still reports application liveness.
 
 `app/integrations/github_url.py` validates a pasted PR URL and extracts the owner,
 repository, and positive PR number. It returns an immutable `PullRequestRef` with
-a normalized `pr_url`. This step validates syntax; GitHub retrieval and checking
-repository visibility come in the next step.
+a normalized `pr_url`. This step validates syntax; the GitHub client below checks
+repository visibility when fetching metadata.
 
 ```python
 from app.integrations.github_url import parse_pull_request_url
@@ -180,6 +180,47 @@ Run the focused tests from the backend directory:
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_github_url.py -q
 ```
+
+## GitHub PR metadata client
+
+`app/integrations/github.py` uses the parser to build requests to the fixed
+`https://api.github.com` host. It returns a validated `PullRequestMetadata` with
+the PR title, author (or `None` for a deleted user), open/closed state, merged
+flag, base/head commit SHAs, and changed-file count. It rejects private repositories
+and checks that the returned PR matches the requested repository and number.
+
+Use it from async Python code:
+
+```python
+from app.integrations.github import GitHubClient
+
+
+async def read_pr(pr_url: str):
+    async with GitHubClient() as github:
+        return await github.get_pull_request(pr_url)
+```
+
+`GITHUB_TOKEN` in the backend environment is optional for public repositories.
+If provided, it is sent only to GitHub; redirects are rejected. No token is
+accepted from the frontend. The client pins GitHub API version `2026-03-10`.
+
+Each attempt has a 15-second deadline, 5-second connection timeout, 10-second
+read/write/pool timeouts, and a 1 MiB response limit. Network failures, timeouts,
+and server errors are retried once after 0.5 seconds. Rate limits, access errors,
+and missing PRs are returned immediately without retrying. `GitHubClientError`
+has a stable `code` and safe message; raw response bodies and credentials are
+not included. URL validation still raises `InvalidPullRequestURL`.
+
+This is a backend integration helper. It is not connected to an HTTP endpoint
+or the frontend yet. Fetching changed files and patches is the next part.
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_github.py -q
+```
+
+All client tests use HTTPX MockTransport; no real token or network is needed.
+The client follows GitHub's [PR endpoint](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request)
+and [rate-limit guidance](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 ## Verify
 

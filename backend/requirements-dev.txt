@@ -1,6 +1,5 @@
 -r requirements.txt
 
-# Test client, test runner, and linter/formatter.
-httpx==0.28.1
+# Test runner and linter/formatter. HTTPX is also a runtime dependency.
 pytest==9.2.0
 ruff==0.17.5

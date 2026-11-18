@@ -43,8 +43,9 @@ npm run dev
 Open <http://127.0.0.1:5173>. The page displays real service status and provides a
 Check again button. API documentation is at <http://127.0.0.1:8001/docs>.
 
-The browser calls FastAPI; database credentials stay on the backend.
-GitHub retrieval and AI review features are planned for subsequent steps.
+The browser calls FastAPI; database credentials stay on the backend. Backend
+helpers now validate public GitHub PR links and fetch PR metadata. Fetching diffs,
+connecting reviews to the browser, and AI analysis come in subsequent steps.
 
 ## Checks
 
