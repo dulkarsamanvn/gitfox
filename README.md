@@ -46,7 +46,13 @@ Check again button. API documentation is at <http://127.0.0.1:8001/docs>.
 The browser calls FastAPI; database credentials stay on the backend. Backend
 helpers now validate public GitHub PR links, fetch metadata and changed-file patches,
 and select bounded text patches with skipped-file reasons. Connecting reviews to
-the browser and AI analysis come in subsequent steps.
+the React page and AI analysis come in subsequent steps.
+
+To inspect a public PR now, use **POST /api/v1/pull-requests/preview** in
+<http://127.0.0.1:8001/docs>. It returns PR metadata, selected patches, skipped-file
+reasons, and totals. This preview works without PostgreSQL or an OpenAI key and
+does not create a review record. See the [backend API guide](backend/README.md#preview-a-pull-request-through-the-api)
+for request examples and error responses.
 
 ## Checks
 

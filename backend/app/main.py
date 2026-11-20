@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.api.pull_requests import create_pull_requests_router
 from app.core.config import Settings, get_settings
 from app.db.database import Database
 
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+    application.include_router(create_pull_requests_router(settings))
 
     @application.get("/")
     def home() -> dict[str, str]:

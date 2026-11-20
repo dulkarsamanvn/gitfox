@@ -211,8 +211,8 @@ and missing PRs are returned immediately without retrying. `GitHubClientError`
 has a stable `code` and safe message; raw response bodies and credentials are
 not included. URL validation still raises `InvalidPullRequestURL`.
 
-These are backend integration helpers. Connecting them to an HTTP endpoint and
-the frontend comes in a later part.
+The preview endpoint below now connects these backend helpers. The React page
+still displays service status; a PR input form comes in a later part.
 
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_github.py -q
@@ -340,6 +340,92 @@ omitted lines/hunks through counts; finding-to-line mapping is a separate next s
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_diff_selection.py tests/test_config.py -q
 ```
+
+## Preview a pull request through the API
+
+With FastAPI running on port 8001, open <http://127.0.0.1:8001/docs>, expand
+`POST /api/v1/pull-requests/preview`, and select **Try it out**. Submit:
+
+```json
+{
+  "pr_url": "https://github.com/fastapi/fastapi/pull/16780"
+}
+```
+
+This is a synchronous HTTP preview: the request waits for GitHub retrieval and
+local patch selection, then returns HTTP 200. It does not call an AI model or
+create a database review. PostgreSQL and an OpenAI key are not required for this
+endpoint. GitHub network access is required; the optional GITHUB_TOKEN comes only
+from the backend settings.
+
+The response contains:
+
+- `metadata`: the normalized PR title, author, repository, state, commit SHAs,
+  and changed-file count.
+- `selection.selected`: selected file metadata and whole patches.
+- `selection.skipped`: skipped file metadata and reasons, without skipped patches.
+- `selection.files_seen`, `files_selected`, `files_skipped`, and `patch_chars`.
+
+Empty selections still return HTTP 200, so callers can inspect the skipped-file
+reasons. Selected files have not been AI-reviewed. Responses use `Cache-Control:
+no-store`, and source patches are not persisted.
+
+You can also call it from PowerShell:
+
+```powershell
+$previewBody = @{ pr_url = "https://github.com/fastapi/fastapi/pull/16780" } | ConvertTo-Json
+$preview = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8001/api/v1/pull-requests/preview" -ContentType "application/json" -Body $previewBody
+$preview.metadata
+$preview.selection
+```
+
+The implementation is in `app/api/pull_requests.py`, registered by `app/main.py`.
+The route receives validated JSON, opens a GitHub client using the application's
+settings, fetches files, closes the client, and calls `select_diffs` with the same
+settings. The request accepts only `pr_url`; extra fields are rejected. URLs are
+normalized with the existing strict parser before any GitHub request.
+
+The preview route bounds the incoming body to 4096 bytes before FastAPI parses
+JSON. It requires `Content-Type: application/json` and caps `pr_url` at 2048
+characters. A small custom APIRoute enforces the body bound and converts request
+validation failures into safe errors that do not repeat submitted input.
+
+Every documented error uses this shape:
+
+```json
+{
+  "detail": {
+    "code": "invalid_pr_url",
+    "message": "Enter an HTTPS GitHub pull request URL in the form https://github.com/OWNER/REPO/pull/NUMBER."
+  }
+}
+```
+
+| HTTP status | Error codes |
+|---|---|
+| 403 | github_forbidden |
+| 404 | github_not_found (also used when GitHub hides an inaccessible private PR) |
+| 409 | github_pr_changed |
+| 413 | request_too_large |
+| 415 | unsupported_media_type |
+| 422 | invalid_request, invalid_pr_url, github_private_repository, github_redirect, github_too_many_files, github_response_too_large |
+| 502 | github_invalid_response, github_request_failed, github_incomplete_files |
+| 503 | github_rate_limited, github_auth_failed, github_unavailable |
+| 504 | github_timeout |
+
+GitHub rate limits return 503 because GitHub access is temporarily unavailable to
+this backend. A backend token failure also returns 503 rather than requesting
+credentials from the caller. Public messages are fixed; raw upstream error text,
+submitted invalid URLs, and backend credentials are excluded.
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_pr_preview.py -q
+```
+
+Endpoint tests use the real GitHub reader and patch selector with HTTPX MockTransport,
+plus ASGITransport for HTTP requests. The route and response schemas follow FastAPI's
+[custom route](https://fastapi.tiangolo.com/how-to/custom-request-and-route/) and
+[response model](https://fastapi.tiangolo.com/tutorial/response-model/) documentation.
 
 ## Verify
 
