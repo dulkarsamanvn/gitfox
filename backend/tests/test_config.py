@@ -13,6 +13,11 @@ def test_settings_boot_without_database_or_api_keys() -> None:
     assert settings.github_token is None
     assert settings.openai_api_key is None
     assert settings.openai_model is None
+    assert (settings.max_review_files, settings.max_patch_chars, settings.max_file_patch_chars) == (
+        10,
+        20_000,
+        10_000,
+    )
 
 
 def test_example_environment_is_valid() -> None:
@@ -24,6 +29,38 @@ def test_example_environment_is_valid() -> None:
     assert len(settings.cors_origins) == 2
     assert settings.openai_api_key is None
     assert settings.github_token is None
+    assert settings.max_review_files == 10
+    assert settings.max_patch_chars == 20_000
+    assert settings.max_file_patch_chars == 10_000
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_review_files", 0),
+        ("max_review_files", 301),
+        ("max_patch_chars", 0),
+        ("max_patch_chars", 200_001),
+        ("max_file_patch_chars", 0),
+        ("max_file_patch_chars", 100_001),
+        ("max_review_files", "invalid"),
+    ],
+)
+def test_rejects_invalid_selection_limits(field: str, value: object) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{field: value})
+
+
+def test_selection_limits_can_come_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_REVIEW_FILES", "3")
+    monkeypatch.setenv("MAX_PATCH_CHARS", "8000")
+    monkeypatch.setenv("MAX_FILE_PATCH_CHARS", "4000")
+    settings = Settings(_env_file=None)
+    assert (settings.max_review_files, settings.max_patch_chars, settings.max_file_patch_chars) == (
+        3,
+        8000,
+        4000,
+    )
 
 
 def test_environment_overrides_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

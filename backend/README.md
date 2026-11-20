@@ -257,8 +257,8 @@ over. This detects updates during retrieval; GitHub's paginated files endpoint
 does not provide an atomic commit snapshot.
 
 Patches stay in memory and are excluded from model `repr` output. This helper
-does not save source code or mark any file as reviewed. Selecting reviewable
-patches and recording skipped-file reasons come next.
+does not save source code or mark any file as reviewed. Pass its file list to
+the selector below to prepare bounded input for a later AI review.
 
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_github.py tests/test_github_files.py -q
@@ -268,6 +268,78 @@ All client tests use HTTPX MockTransport; no real token or network is needed.
 The client follows GitHub's [PR endpoint](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request)
 and [files endpoint](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests-files),
 with [rate-limit handling](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+## Select patches for review
+
+`app/services/diff_selection.py` contains `select_diffs(files)`. This is application
+logic: it processes the validated file objects returned by the GitHub client
+without making network requests or calling an AI model.
+
+```python
+from app.integrations.github import GitHubClient
+from app.services.diff_selection import select_diffs
+
+
+async def prepare_review(pr_url: str):
+    async with GitHubClient() as github:
+        fetched = await github.get_pull_request_files(pr_url)
+    return select_diffs(fetched.files)
+```
+
+The `DiffSelection` result contains:
+
+- `selected`: immutable `SelectedDiff` objects with their original whole patches.
+- `skipped`: immutable file metadata and a stable `reason`, without skipped patches.
+- `files_seen`, `files_selected`, `files_skipped`, and `patch_chars`: computed totals
+  included when serializing the result. Every input file is counted once.
+
+Selection does not mark a file as reviewed. AI analysis and persistence come later.
+For example, one Python patch plus a PNG without a text patch produces one selected
+file and one skipped file, with `binary_file` as the PNG's reason.
+
+Limits come from `app/core/config.py` and can be overridden in the backend environment:
+
+| Setting | Default | Allowed range |
+|---|---:|---:|
+| MAX_REVIEW_FILES | 10 | 1–300 |
+| MAX_PATCH_CHARS | 20000 | 1–200000 |
+| MAX_FILE_PATCH_CHARS | 10000 | 1–100000 |
+
+Sizes count Python characters in the diff text, including headers and line endings;
+they are not model token limits or full-file sizes. The per-file and total limits
+apply independently. Keep whole patches: an oversized patch is skipped, and later
+smaller patches can still fill the remaining budget. Eligible files retain input
+order, and skipped files do not consume the file or character budgets.
+
+The filename policy supports common source, configuration, markup, and documentation
+extensions, plus filenames such as Dockerfile and Makefile. Its explicit allowlist
+is `_TEXT_EXTENSIONS` / `_TEXT_FILENAMES` in the selector module. Generated-file
+detection uses known directory names and filename patterns, such as `dist/`,
+`node_modules/`, `*.min.js`, and `*.generated.ts`; it does not inspect full file contents.
+
+| Skip reason | Meaning |
+|---|---|
+| generated_file | Known generated/dependency directory or filename pattern |
+| lock_file | Dependency lockfile name or `.lock` suffix |
+| binary_file | Known binary file extension |
+| unsupported_file_type | Filename/extension is outside the text allowlist |
+| missing_patch | Patch is absent, empty, or whitespace only |
+| patch_too_large | Whole patch exceeds MAX_FILE_PATCH_CHARS |
+| invalid_patch | Patch has malformed unified-diff structure |
+| incomplete_patch | Hunk lengths or added/deleted totals do not match; patch may be truncated |
+| no_text_changes | Valid hunks contain only context lines |
+| file_limit_exceeded | Enough eligible files have already been selected |
+| patch_budget_exceeded | Whole patch does not fit the remaining total character budget |
+
+Path rules run first, then patch availability, per-file size, and integrity checks,
+followed by the file-count and total-character budgets. One primary reason is recorded
+per skipped file. Hunk checks support additions, deletions, multiple hunks, CRLF, and
+Git's no-final-newline marker, while preserving the original patch string. They detect
+omitted lines/hunks through counts; finding-to-line mapping is a separate next step.
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_diff_selection.py tests/test_config.py -q
+```
 
 ## Verify
 

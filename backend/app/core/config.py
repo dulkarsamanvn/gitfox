@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None
+    max_review_files: int = Field(default=10, ge=1, le=300)
+    max_patch_chars: int = Field(default=20_000, ge=1, le=200_000)
+    max_file_patch_chars: int = Field(default=10_000, ge=1, le=100_000)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
