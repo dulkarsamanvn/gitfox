@@ -427,6 +427,115 @@ plus ASGITransport for HTTP requests. The route and response schemas follow Fast
 [custom route](https://fastapi.tiangolo.com/how-to/custom-request-and-route/) and
 [response model](https://fastapi.tiangolo.com/tutorial/response-model/) documentation.
 
+## AI review result schemas
+
+`app/schemas/analysis.py` defines the provider-independent shape expected from a
+future AI review call. These Pydantic schemas validate data in memory; the existing
+SQLAlchemy models define database tables. No AI provider is called by this module,
+and the preview endpoint still returns only GitHub data and patch selection.
+
+Illustrative output (not a finding from a real PR):
+
+```json
+{
+  "summary": "One possible empty-input issue in the supplied changes.",
+  "findings": [
+    {
+      "severity": "medium",
+      "category": "bug",
+      "file_path": "src/users.py",
+      "line": 12,
+      "title": "Possible empty-list access",
+      "explanation": "Accessing the first item fails when the list is empty.",
+      "evidence": "    return users[0]\n",
+      "suggestion": "    return users[0] if users else None\n",
+      "confidence": "high"
+    }
+  ]
+}
+```
+
+`ReviewAnalysis` requires `summary` and a `findings` list; an empty list is valid.
+Each `ReviewFinding` requires all fields shown above. The `line` key accepts a
+positive integer up to 2147483647 or explicit `null` when a precise location is
+unavailable. Strings, floats, and booleans are not coerced into line numbers.
+
+Severity, category, and confidence reuse `FindingSeverity`, `FindingCategory`, and
+`FindingConfidence` from the database model so their allowed values stay aligned:
+
+- Severity: `critical`, `high`, `medium`, `low`, `info`.
+- Category: `bug`, `security`, `performance`, `maintainability`.
+- Confidence: `high`, `medium`, `low`.
+
+The schema accepts ordinary JSON strings for these enums, rejecting unsupported
+values and nonstring inputs. Extra fields are forbidden at both levels: model
+output cannot set review IDs, statuses, model names, or extra actions.
+
+| Bound | Limit |
+|---|---:|
+| Summary | 4000 characters |
+| Findings | 50 |
+| Finding title | 200 characters, matching the database column |
+| Explanation, evidence, suggestion | 4000 characters each |
+| File path | 4096 characters |
+| Raw JSON parsed by parse_review_analysis | 1 MiB in UTF-8 bytes |
+
+Required text cannot be empty or whitespace only. Original evidence and suggestion
+text is preserved, including indentation. Paths use the same relative-path syntax
+check as the GitHub reader, factored into `app/core/repository_paths.py`.
+
+For raw JSON, use the bounded parser:
+
+```python
+from app.schemas.analysis import parse_review_analysis
+
+analysis = parse_review_analysis(
+    '{"summary":"No supported findings in the supplied changes.","findings":[]}'
+)
+assert analysis.findings == []
+```
+
+Invalid, incomplete, oversized, or schema-invalid JSON raises `InvalidReviewOutput`
+with code `invalid_review_output` and a safe message. The raw response is not
+included in that message or the models' printed representations. The schemas can
+also validate provider dictionaries with `ReviewAnalysis.model_validate(...)` and
+export JSON Schema with `ReviewAnalysis.model_json_schema()`.
+
+These checks validate structure and bounds. Verifying that paths belong to selected
+files, line numbers identify actual changed lines, evidence is grounded, and findings
+are not duplicated belongs to the later validation service. Schema-valid findings
+still require human review. The contract version is `review-analysis-v1`.
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_analysis_schemas.py -q
+```
+
+The schemas follow Pydantic's [strict validation](https://docs.pydantic.dev/latest/concepts/strict_mode/)
+and [JSON validation](https://docs.pydantic.dev/latest/concepts/json/) APIs.
+
+## Planned review reuse
+
+When AI execution and review persistence are connected, repeated requests should
+reuse a completed, validated review for the same inputs. The PR URL alone is not
+a sufficient cache key: the PR or its base branch may have changed.
+
+The reuse identity must include repository/PR identity, base and head SHAs, provider
+and model, and a fingerprint of the actual analysis inputs and rules. That fingerprint
+must cover selected patches, prompt/schema versions, selection limits, and context
+policy. Changing those inputs must trigger a new review. The backend should check
+GitHub's current metadata before deciding whether a saved review still applies.
+
+Persisted completed reviews in PostgreSQL can supply the reusable result. Pending
+or running work for the same identity should share one review job; failed or invalid
+results must not be reused as successful reviews. Concurrent duplicate requests need
+an atomic database admission/deduplication mechanism before the AI call.
+
+This is the policy for the future review execution step. There is currently no AI
+call, review-result cache, or automatic reuse lookup. The preview still fetches from
+GitHub each time. Existing review commit/model fields and the PR/head index provide
+part of the foundation; persisting the full fingerprint and implementing the lookup
+will need a separate change.
+
 ## Verify
 
 ```powershell

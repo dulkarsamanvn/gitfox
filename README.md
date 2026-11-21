@@ -54,6 +54,11 @@ reasons, and totals. This preview works without PostgreSQL or an OpenAI key and
 does not create a review record. See the [backend API guide](backend/README.md#preview-a-pull-request-through-the-api)
 for request examples and error responses.
 
+The backend also defines validated AI review-result schemas for summaries and
+findings. AI provider calls and saved-review reuse are planned next; see the
+[result contract](backend/README.md#ai-review-result-schemas) and
+[reuse policy](backend/README.md#planned-review-reuse).
+
 ## Checks
 
 Backend checks and database integration tests are documented in
