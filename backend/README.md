@@ -211,8 +211,8 @@ and missing PRs are returned immediately without retrying. `GitHubClientError`
 has a stable `code` and safe message; raw response bodies and credentials are
 not included. URL validation still raises `InvalidPullRequestURL`.
 
-The preview endpoint below now connects these backend helpers. The React page
-still displays service status; a PR input form comes in a later part.
+The preview endpoint below connects these backend helpers. The React PR preview
+form now calls this endpoint; it can also be tried directly through `/docs`.
 
 ```powershell
 .\env\Scripts\python.exe -m pytest tests/test_github.py -q

@@ -1,13 +1,14 @@
 # GitFox frontend
 
-A React + TypeScript status page, served by Vite. It shows whether the FastAPI
-backend and PostgreSQL database are reachable.
+A React + TypeScript PR preview page, served by Vite. Paste a public GitHub pull
+request URL to inspect its metadata, selected patches, and skipped-file reasons.
+Service-status cards below the preview show FastAPI and PostgreSQL availability.
 
 ## Install and run
 
 Use Node.js 22.12 or newer; this project was verified with Node.js 22.14.
-Start PostgreSQL and FastAPI using the [backend instructions](../backend/README.md).
-FastAPI should listen on port 8001.
+Start FastAPI using the [backend instructions](../backend/README.md), on port 8001.
+PostgreSQL is optional for PR previews; start it to make the database status healthy.
 
 In a separate PowerShell terminal:
 
@@ -25,7 +26,36 @@ copy .env.example to .env and change VITE_API_BASE_URL, then restart Vite.
 VITE_ values are public browser configuration: database credentials and API keys
 belong only in backend/.env.
 
-## What happens on this page
+## Preview a pull request
+
+1. Paste an HTTPS public GitHub PR URL into **GitHub pull request URL**.
+2. Click **Preview PR**, or press Enter in the field.
+3. Inspect the PR title, author, state, commit details, and selection totals.
+4. Expand selected files to read their patches. Skipped files include a reason.
+
+The form calls `POST /api/v1/pull-requests/preview` with `{ "pr_url": "..." }`.
+Axios sends the request; a TanStack Query mutation manages loading, errors, and
+results. Previews run only on explicit submission, with automatic retries disabled.
+They use a 70-second timeout to allow the backend's bounded GitHub retrieval to
+finish. **Cancel preview** aborts the browser request and clears its state.
+
+The form normalizes supported PR URLs and catches obvious invalid input before
+requesting the API. The backend remains authoritative. During loading, the field
+and submit button are disabled, preventing duplicate submissions. Editing the URL
+clears previous results, so an old PR's data is not shown for a new input. Each
+submission fetches fresh data; there is no persisted browser preview cache.
+
+The API helper validates incoming data at runtime, including PR identity, safe
+GitHub links, filenames, skip reasons, and coverage/patch-size totals. Unicode
+patch sizes use code-point counts to match Python. Errors use fixed messages based
+on known backend codes; raw backend messages are not displayed. Repository titles,
+paths, and patches render as text, without HTML or Markdown execution.
+
+Empty PRs and previews with no selected patches have explicit empty states. A
+failed database readiness check does not disable previews. This UI previews code
+changes; AI findings and saved-review history come later.
+
+## Service-status checks
 
 1. When opened, the page requests GET /health and GET /ready from FastAPI.
 2. It validates each JSON response and displays the API and database status separately.
@@ -48,7 +78,10 @@ The browser only calls FastAPI. FastAPI makes the PostgreSQL connection.
 | File | Purpose |
 |---|---|
 | src/main.tsx | Mounts React and provides the TanStack Query client. |
-| src/App.tsx | Renders the page using the status hook and handles Check again. |
+| src/App.tsx | Places the PR preview above service status and handles Check again. |
+| src/components/PrPreview.tsx | PR input, loading/errors, metadata, selected patches, and skipped-file results. |
+| src/hooks/usePrPreview.ts | TanStack mutation lifecycle, duplicate-submit guard, and browser cancellation. |
+| src/api/pullRequests.ts | PR types, URL normalization, Axios POST, runtime response checks, and safe errors. |
 | src/hooks/useServiceStatus.ts | Uses TanStack Query to manage each endpoint's state. |
 | src/api/client.ts | Creates the shared Axios client, backend address, and timeout. |
 | src/api/status.ts | Calls Axios, validates responses, and translates errors into safe messages. |
@@ -80,8 +113,8 @@ runs JavaScript after Vite removes the TypeScript annotations. npm run build als
 runs the TypeScript checker before bundling. TypeScript does not validate network
 responses at runtime, so the API helper still checks the JSON received from FastAPI.
 
-The request flow is App.tsx -> useServiceStatus -> Axios -> FastAPI. The hook gives
-App.tsx a status object to display; App.tsx no longer manages requests with useEffect.
+The preview flow is PrPreview -> usePrPreview -> fetchPrPreview -> Axios -> FastAPI.
+The service-status flow is App.tsx -> useServiceStatus -> Axios -> FastAPI.
 
 ## Verify
 
@@ -111,8 +144,12 @@ $env:PLAYWRIGHT_CHANNEL = "chrome"
 npm run test:e2e
 ```
 
-The ordinary tests mock API responses and cover success, database failure,
-unreachable API, invalid responses, timeout, retry, mobile layout, and keyboard use.
+The ordinary tests mock API responses and cover PR submission, metadata/patches,
+renames, skipped reasons, empty states, cancellation, invalid input/responses,
+safe error messages, stale-result clearing, Unicode, text rendering, mobile layout,
+keyboard use, and the existing service-status states. The browser clock tests the
+70-second preview timeout without a real 70-second wait. Desktop and mobile preview
+screenshots are written to the ignored `test-results/` directory.
 The real backend check is skipped by default. With FastAPI and PostgreSQL running:
 
 ```powershell

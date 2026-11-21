@@ -4,14 +4,15 @@
 
 GitFox is being built to review public GitHub pull requests and present structured
 findings. The current foundation includes FastAPI, PostgreSQL, SQLAlchemy models,
-Alembic migrations, and a React + TypeScript status page.
+Alembic migrations, and a React + TypeScript page for PR previews and service status.
 
-The status page checks the existing backend endpoints:
+The page uses these backend endpoints:
 
 | Endpoint | Meaning |
 |---|---|
 | GET /health | FastAPI is running. |
 | GET /ready | FastAPI can connect to PostgreSQL. |
+| POST /api/v1/pull-requests/preview | Fetch PR details and select patches, with skipped-file reasons. |
 
 ## One-time setup
 
@@ -40,13 +41,15 @@ cd D:\GitFox\frontend
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. The page displays real service status and provides a
-Check again button. API documentation is at <http://127.0.0.1:8001/docs>.
+Open <http://127.0.0.1:5173>, paste a public GitHub PR URL, and click **Preview PR**.
+Inspect PR metadata, expandable patches, and skipped-file reasons. Service-status
+checks and **Check again** remain available below. API documentation is at
+<http://127.0.0.1:8001/docs>.
 
 The browser calls FastAPI; database credentials stay on the backend. Backend
 helpers now validate public GitHub PR links, fetch metadata and changed-file patches,
-and select bounded text patches with skipped-file reasons. Connecting reviews to
-the React page and AI analysis come in subsequent steps.
+and select bounded text patches with skipped-file reasons. The React form now
+connects this flow. AI analysis and saved-review history come in subsequent steps.
 
 To inspect a public PR now, use **POST /api/v1/pull-requests/preview** in
 <http://127.0.0.1:8001/docs>. It returns PR metadata, selected patches, skipped-file

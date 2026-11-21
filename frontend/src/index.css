@@ -36,7 +36,7 @@ main { padding: 50px 0 62px; }
 .summary { display: flex; align-items: center; gap: 20px; padding: 30px; border: 1px solid #dce6d5; background: #eef4e9; border-radius: 16px; margin-bottom: 24px; }
 .summary-icon { display: grid; place-items: center; width: 50px; height: 50px; flex-shrink: 0; border-radius: 50%; background: #dcebd3; color: #427044; }
 .summary-icon svg { width: 26px; height: 26px; }
-.summary-copy h1 { font-size: clamp(22px, 2.7vw, 30px); line-height: 1.25; letter-spacing: -1px; font-weight: 650; margin: 0 0 8px; }
+.summary-copy h3 { font-size: clamp(22px, 2.7vw, 30px); line-height: 1.25; letter-spacing: -1px; font-weight: 650; margin: 0 0 8px; }
 .summary-copy p { margin: 0; color: #55654d; font-size: 13px; line-height: 1.6; }
 .summary-count { margin-left: auto; padding-left: 12px; flex-shrink: 0; font-size: 11px; font-weight: 600; color: #58714c; }
 .summary--checking { background: #eef0ec; border-color: #e0e4dc; }
@@ -54,7 +54,7 @@ main { padding: 50px 0 62px; }
 .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .status-pill--checking { background: #f1f3ed; color: #606d59; }
 .status-pill--unhealthy { background: #fbefe5; color: #a26630; }
-.service-card h2 { font-size: 19px; font-weight: 650; letter-spacing: -.45px; margin: 0 0 8px; }
+.service-card h3 { font-size: 19px; font-weight: 650; letter-spacing: -.45px; margin: 0 0 8px; }
 .service-description { color: #606d59; font-size: 12px; margin: 0; line-height: 1.6; }
 .service-detail { font-size: 12px; color: #5b7351; margin: 24px 0; min-height: 38px; line-height: 1.65; }
 .service-card--unhealthy .service-detail { color: #986334; }
@@ -69,7 +69,7 @@ main { padding: 50px 0 62px; }
 .metadata-dot { width: 4px; height: 4px; background: #99a28e; border-radius: 50%; }
 .backend-address code { color: #606d59; }
 .explanation { margin-top: 44px; padding: 24px 26px; display: flex; align-items: center; justify-content: space-between; gap: 22px; border: 1px solid #e2e6db; border-radius: 12px; }
-.explanation h2 { font-size: 12px; font-weight: 650; margin: 0 0 8px; }
+.explanation h3 { font-size: 12px; font-weight: 650; margin: 0 0 8px; }
 .explanation p { font-size: 11px; line-height: 1.7; margin: 0; color: #606d59; max-width: 310px; }
 .connection-flow { display: inline-flex; align-items: center; gap: 12px; color: #65705c; font-size: 10px; flex-shrink: 0; }
 .connection-flow > span { border: 1px solid #dfe4d6; background: #fafbf7; border-radius: 6px; padding: 9px 11px; }
@@ -93,7 +93,7 @@ main { padding: 50px 0 62px; }
   .eyebrow { font-size: 8px; letter-spacing: 1.4px; }
   .summary { padding: 22px 18px; gap: 14px; }
   .summary-icon { width: 40px; height: 40px; }
-  .summary-copy h1 { font-size: 21px; letter-spacing: -.65px; }
+  .summary-copy h3 { font-size: 21px; letter-spacing: -.65px; }
   .summary-copy p { font-size: 11px; }
   .services-grid { grid-template-columns: 1fr; gap: 16px; }
   .service-card { padding: 24px 24px 0; }
@@ -107,4 +107,90 @@ main { padding: 50px 0 62px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+.system-status { margin-top: 56px; padding-top: 40px; border-top: 1px solid #dce1d7; }
+.preview-intro .eyebrow { font-size: 12px; }
+.preview-intro h1 { margin: 0 0 16px; color: #202b24; font-size: clamp(30px, 4vw, 42px); font-weight: 650; letter-spacing: -1.5px; line-height: 1.15; }
+.preview-intro > p:last-child { margin: 0 0 28px; color: #59645b; font-size: 16px; line-height: 1.7; }
+.preview-form { padding: 26px; background: #fff; border: 1px solid #dce1d7; border-radius: 14px; box-shadow: 0 4px 20px #17231804; }
+.preview-form label { display: block; margin-bottom: 12px; font-size: 14px; font-weight: 650; }
+.preview-form-controls { display: flex; gap: 12px; }
+.preview-form input { flex: 1; min-width: 0; min-height: 48px; padding: 12px 14px; font: inherit; font-size: 16px; color: #202b24; background: #fafbf9; border: 1px solid #b9c4b8; border-radius: 8px; }
+.preview-form input::placeholder { color: #68726a; }
+.preview-form input:focus-visible { outline: 3px solid #e6694060; outline-offset: 2px; border-color: #b94422; }
+.preview-form input[aria-invalid="true"] { border-color: #ad3026; }
+.preview-form input:disabled { opacity: .7; }
+.preview-submit, .preview-cancel { min-height: 48px; padding: 12px 22px; border: 1px solid transparent; border-radius: 8px; font-size: 14px; font-weight: 650; cursor: pointer; }
+.preview-submit { color: #fff; background: #b94422; }
+.preview-submit:hover:not(:disabled) { background: #983619; }
+.preview-submit:disabled { background: #825c50; cursor: wait; }
+.preview-cancel { color: #39463c; background: #f3f5f0; border-color: #dce1d7; }
+.preview-cancel:hover { background: #e8ede3; }
+.preview-hint { margin: 12px 0 0; color: #626d63; font-size: 14px; line-height: 1.6; }
+.preview-error { margin: 18px 0 0; padding: 14px 16px; color: #8a2923; background: #fff1ed; border: 1px solid #efd1c8; border-radius: 8px; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.preview-empty { margin-top: 20px; padding: 28px 20px; border: 1px dashed #cbd3c6; border-radius: 12px; color: #626d63; font-size: 16px; line-height: 1.6; text-align: center; }
+.preview-progress { display: flex; align-items: center; gap: 16px; margin-top: 20px; padding: 22px; border-radius: 12px; background: #edf2e9; color: #374a35; }
+.preview-progress p { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.preview-progress span:not(.preview-spinner) { font-size: 14px; line-height: 1.6; }
+.preview-spinner { width: 24px; height: 24px; flex-shrink: 0; border: 3px solid #c3d4b8; border-top-color: #486a3c; border-radius: 50%; animation: spin 1s linear infinite; }
+.preview-results { margin-top: 28px; padding: 28px; background: #fff; border: 1px solid #dce1d7; border-radius: 14px; min-width: 0; }
+.preview-result-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.preview-result-heading > div:first-child { min-width: 0; }
+.preview-repository { margin: 0 0 10px; color: #596a53; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.preview-repository span { color: #707b6b; margin-left: 4px; }
+.preview-result-heading h2 { margin: 0 0 12px; color: #263329; font-size: 26px; font-weight: 650; letter-spacing: -.6px; line-height: 1.4; overflow-wrap: anywhere; }
+.preview-author { margin: 0; color: #626d63; font-size: 14px; overflow-wrap: anywhere; }
+.preview-result-links { display: flex; align-items: flex-end; flex-direction: column; gap: 14px; flex-shrink: 0; font-size: 14px; }
+.preview-result-links a { color: #486940; text-underline-offset: 4px; }
+.pr-state { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; background: #eff6ec; color: #37623b; }
+.pr-state--merged { color: #68458f; background: #f2ecf8; }
+.pr-state--closed { color: #914b35; background: #faeee8; }
+.preview-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 26px 0; }
+.preview-totals > div { padding: 16px; border: 1px solid #e5e9e0; border-radius: 9px; background: #fafbf8; }
+.preview-totals dt { min-height: 36px; color: #626d63; font-size: 14px; line-height: 1.3; }
+.preview-totals dd { margin: 8px 0 0; color: #2a3d2a; font-size: 26px; font-weight: 650; }
+.commit-details { color: #59645b; font-size: 14px; }
+.commit-details > summary { cursor: pointer; width: fit-content; padding: 6px 0; }
+.commit-details dl { display: grid; gap: 10px; padding: 16px; border-radius: 8px; background: #f5f7f2; }
+.commit-details dl > div { display: flex; gap: 12px; }
+.commit-details dt { min-width: 36px; font-weight: 600; }
+.commit-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.preview-file-section { margin-top: 28px; }
+.preview-file-section h3 { margin: 0 0 14px; font-size: 18px; font-weight: 650; }
+.preview-file { margin: 10px 0; border: 1px solid #dde4d7; border-radius: 9px; overflow: hidden; }
+.preview-file > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; padding: 16px; cursor: pointer; list-style: none; font-size: 14px; }
+.preview-file > summary::-webkit-details-marker { display: none; }
+.preview-file > summary::before { content: '+'; width: 14px; flex-shrink: 0; color: #596e51; font-weight: 700; }
+.preview-file[open] > summary::before { content: '−'; }
+.preview-file > summary:hover { background: #f8faf5; }
+.preview-file > summary > code { flex: 1; min-width: 100px; overflow-wrap: anywhere; color: #33462e; }
+.file-status { color: #626d63; font-size: 14px; }
+.file-counts { color: #8b5142; font-size: 14px; }
+.file-counts > span { color: #397044; }
+.preview-file pre { max-height: 420px; overflow: auto; margin: 0; padding: 20px; border-top: 1px solid #dde4d7; background: #f6f8f2; color: #273b25; font-size: 14px; line-height: 1.7; tab-size: 4; }
+.previous-filename { margin: 0; padding: 12px 16px; color: #626d63; font-size: 14px; overflow-wrap: anywhere; border-top: 1px solid #e5e9e0; }
+.preview-notice { margin: 0; color: #626d63; font-size: 16px; line-height: 1.6; }
+.skipped-files { list-style: none; margin: 0; padding: 0; border: 1px solid #e5e9e0; border-radius: 9px; }
+.skipped-files li { padding: 16px; font-size: 14px; }
+.skipped-files li + li { border-top: 1px solid #e5e9e0; }
+.skipped-files code { color: #4d554b; overflow-wrap: anywhere; }
+.skipped-files p { margin: 8px 0 0; color: #626d63; font-size: 14px; line-height: 1.5; }
+.preview-file summary:focus-visible, .commit-details summary:focus-visible, .preview-file pre:focus-visible { outline: 3px solid #e66940; outline-offset: -3px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+@media (max-width: 700px) {
+  .preview-form-controls { flex-wrap: wrap; }
+  .preview-form input { flex-basis: 100%; }
+  .preview-submit { flex: 1; }
+  .preview-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .preview-result-heading { flex-direction: column; gap: 18px; }
+  .preview-result-links { flex-direction: row; align-items: center; }
+}
+@media (max-width: 450px) {
+  .preview-form, .preview-results { padding: 20px 16px; }
+  .preview-file > summary { gap: 8px; padding: 14px 12px; }
+  .file-counts { width: 100%; margin-left: 22px; }
+  .preview-totals > div { padding: 12px; }
+  .preview-result-heading h2 { font-size: 23px; }
 }

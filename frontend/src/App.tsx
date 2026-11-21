@@ -1,6 +1,7 @@
 import { API_BASE_URL } from './api/client';
 import type { HealthEndpoint, ServiceStatus } from './api/status';
 import { useServiceStatus } from './hooks/useServiceStatus';
+import { PrPreview } from './components/PrPreview';
 
 type IconName = 'check' | 'refresh' | 'api' | 'database' | 'arrow' | 'alert';
 
@@ -41,7 +42,7 @@ function ServiceCard({ title, kind, endpoint, status }: {
           <span className="status-dot" />{label}
         </span>
       </div>
-      <h2 id={`${kind}-title`}>{title}</h2>
+      <h3 id={`${kind}-title`}>{title}</h3>
       <p className="service-description">{kind === 'api' ? 'The connection to your backend.' : 'The connection to your review storage.'}</p>
       <p className="service-detail">{status.detail}</p>
       <div className="endpoint-row">
@@ -91,11 +92,13 @@ export default function App() {
         <span className="environment-label"><span />Local environment</span>
       </header>
 
-      <main aria-busy={isChecking}>
+      <main>
+        <PrPreview />
+        <section className="system-status" aria-labelledby="system-status-title" aria-busy={isChecking}>
         <div className="page-heading">
           <div>
             <p className="eyebrow">WORKSPACE OVERVIEW</p>
-            <p className="page-label">System status</p>
+            <h2 className="page-label" id="system-status-title">System status</h2>
           </div>
           <button className="refresh-button" type="button" onClick={() => void runChecks()} disabled={isChecking}>
             <Icon name="refresh" className={isChecking ? 'spinning' : ''} />
@@ -106,7 +109,7 @@ export default function App() {
         <div className={`summary summary--${overallState}`} role="status" aria-live="polite" aria-atomic="true">
           <div className="summary-icon"><Icon name={isChecking ? 'refresh' : healthyCount === 2 ? 'check' : 'alert'} className={isChecking ? 'spinning' : ''} /></div>
           <div className="summary-copy">
-            <h1>{headline}</h1>
+            <h3>{headline}</h3>
             <p>{summary}</p>
           </div>
           <span className="summary-count">{isChecking ? 'Checking services' : `${healthyCount} of 2 services ready`}</span>
@@ -124,12 +127,13 @@ export default function App() {
 
         <section className="explanation" aria-labelledby="explanation-title">
           <div>
-            <h2 id="explanation-title">How the checks work</h2>
+            <h3 id="explanation-title">How the checks work</h3>
             <p>Your browser asks FastAPI for each status. FastAPI checks PostgreSQL.</p>
           </div>
           <div className="connection-flow" aria-label="Browser connects to FastAPI, which connects to PostgreSQL">
             <span>Browser</span><Icon name="arrow" /><span>FastAPI</span><Icon name="arrow" /><span>PostgreSQL</span>
           </div>
+        </section>
         </section>
       </main>
 
