@@ -55,6 +55,43 @@ Empty PRs and previews with no selected patches have explicit empty states. A
 failed database readiness check does not disable previews. This UI previews code
 changes; AI findings and saved-review history come later.
 
+## LLM configuration
+
+Open **LLM configuration** below the PR preview. Choose OpenAI, Anthropic Claude,
+or Google Gemini, then enter a model ID available to your account. **Find model
+IDs** opens the provider's official documentation; model availability is account
+specific, so no model is hardcoded as a default.
+
+Enter an API key in the masked field, or leave it blank to keep a key already
+configured for that provider on the backend. The API reports only whether a key
+exists, never the saved key itself.
+
+- **Test connection** checks the current draft's credentials and model visibility.
+  It does not save settings, generate text, test generation quota/billing, or prove
+  that a model can produce the review schema.
+- **Save configuration** saves the provider, model, and optional replacement key
+  to the local backend. It does not automatically run a connection test. The key
+  field is cleared after saving, including when replacing an existing key.
+
+Changes clear previous success/error messages. Fields are disabled while saving
+or testing to avoid stale results. Settings load only when the panel is opened;
+closing it unmounts the form and cancels browser requests. A test has a 20-second
+browser timeout around the backend's 15-second provider deadline.
+
+Draft keys are held only in form/request memory: they are not put into localStorage,
+sessionStorage, query results, or mutation variables. Axios errors are replaced
+with safe errors so request configurations containing keys are not retained as
+mutation errors. Raw backend/provider messages are not displayed.
+
+Saved credentials live in the Git-ignored `backend/.llm-settings.json` file, as
+local plaintext, with backend environment keys as a fallback. This is a local
+configuration interface; it requires a loopback backend connection and an allowed
+local browser origin. Backend authentication and public remote administration
+are outside this local setup. See the [backend configuration API](../backend/README.md#llm-provider-configuration).
+
+This prepares provider settings for the future AI review client. PR previews still
+fetch GitHub data and select patches without generating an AI review.
+
 ## Service-status checks
 
 1. When opened, the page requests GET /health and GET /ready from FastAPI.
@@ -82,6 +119,9 @@ The browser only calls FastAPI. FastAPI makes the PostgreSQL connection.
 | src/components/PrPreview.tsx | PR input, loading/errors, metadata, selected patches, and skipped-file results. |
 | src/hooks/usePrPreview.ts | TanStack mutation lifecycle, duplicate-submit guard, and browser cancellation. |
 | src/api/pullRequests.ts | PR types, URL normalization, Axios POST, runtime response checks, and safe errors. |
+| src/components/LlmSettings.tsx | Provider/model/key form, save result, and model-access test result. |
+| src/hooks/useLlmConfiguration.ts | Lazy configuration query and secret-free mutation variables. |
+| src/api/llm.ts | LLM API types, safe errors, and public response validation. |
 | src/hooks/useServiceStatus.ts | Uses TanStack Query to manage each endpoint's state. |
 | src/api/client.ts | Creates the shared Axios client, backend address, and timeout. |
 | src/api/status.ts | Calls Axios, validates responses, and translates errors into safe messages. |

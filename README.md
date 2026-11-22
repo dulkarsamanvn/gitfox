@@ -57,8 +57,13 @@ reasons, and totals. This preview works without PostgreSQL or an OpenAI key and
 does not create a review record. See the [backend API guide](backend/README.md#preview-a-pull-request-through-the-api)
 for request examples and error responses.
 
+Open **LLM configuration** below the preview to choose OpenAI, Anthropic Claude,
+or Google Gemini, enter a model ID and API key, test access, and save the selection.
+Keys stay on the local backend and are never returned by the settings API. The
+connection test checks model metadata without generating text.
+
 The backend also defines validated AI review-result schemas for summaries and
-findings. AI provider calls and saved-review reuse are planned next; see the
+findings. AI review generation and saved-review reuse are planned next; see the
 [result contract](backend/README.md#ai-review-result-schemas) and
 [reuse policy](backend/README.md#planned-review-reuse).
 

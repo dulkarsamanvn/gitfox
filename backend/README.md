@@ -540,6 +540,12 @@ will need a separate change.
 
 The local configuration API supports OpenAI, Anthropic Claude, and Google Gemini:
 
+The React page exposes this API through the **LLM configuration** panel below the
+PR preview. Choose a provider, enter its model ID and key, test the draft, and save.
+Saved choices take effect through `LlmConfigurationStore`; future review execution
+must resolve its provider profile through that store rather than bootstrap settings
+alone. AI review generation is not connected yet.
+
 | Endpoint | Purpose |
 |---|---|
 | GET /api/v1/llm/configuration | Active provider and public profiles; never returns API keys |

@@ -2,6 +2,7 @@ import { API_BASE_URL } from './api/client';
 import type { HealthEndpoint, ServiceStatus } from './api/status';
 import { useServiceStatus } from './hooks/useServiceStatus';
 import { PrPreview } from './components/PrPreview';
+import { LlmSettings } from './components/LlmSettings';
 
 type IconName = 'check' | 'refresh' | 'api' | 'database' | 'arrow' | 'alert';
 
@@ -94,6 +95,7 @@ export default function App() {
 
       <main>
         <PrPreview />
+        <LlmSettings />
         <section className="system-status" aria-labelledby="system-status-title" aria-busy={isChecking}>
         <div className="page-heading">
           <div>

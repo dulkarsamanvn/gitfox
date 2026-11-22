@@ -141,6 +141,7 @@ test('fits a mobile viewport and supports keyboard refresh', async ({ page }) =>
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
   await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Check again' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Your setup is ready.' })).toBeVisible();
