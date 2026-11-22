@@ -536,6 +536,51 @@ GitHub each time. Existing review commit/model fields and the PR/head index prov
 part of the foundation; persisting the full fingerprint and implementing the lookup
 will need a separate change.
 
+## LLM provider configuration
+
+The local configuration API supports OpenAI, Anthropic Claude, and Google Gemini:
+
+| Endpoint | Purpose |
+|---|---|
+| GET /api/v1/llm/configuration | Active provider and public profiles; never returns API keys |
+| POST /api/v1/llm/configuration | Save provider, model, and an optional replacement API key |
+| POST /api/v1/llm/test-connection | Check draft or saved credentials against model metadata |
+
+Save/test bodies contain `provider`, `model`, and optional `api_key`. Providers are
+`openai`, `anthropic`, or `gemini`. Use a model ID available to your provider account;
+there is no hardcoded default model. Gemini's optional `models/` prefix is normalized.
+An omitted/blank key preserves the existing provider key, with backend environment
+credentials as a fallback. Test does not save; save does not imply the key was tested.
+
+`LLM_PROVIDER`, `OPENAI_MODEL`, `ANTHROPIC_MODEL`, and `GEMINI_MODEL` supply initial
+choices. Corresponding `*_API_KEY` values remain backend-only. UI-saved settings
+override those defaults and persist across restarts in `backend/.llm-settings.json`.
+The file contains local plaintext credentials, is Git-ignored, and is replaced
+atomically. Environment keys are used in place rather than copied into this file.
+Changing environment values outside the app requires a backend restart.
+
+This is a local administration API: callers must have a loopback peer address and
+an allowed browser origin. It supports the existing localhost frontend and `/docs`.
+It is not a public remote administration interface. Only fixed official provider
+hosts are contacted; custom URLs and redirects are not accepted. Requests are
+bounded to 4096 bytes and validation errors omit submitted values.
+
+Connection tests perform one model metadata GET, with a 15-second deadline and a
+64 KiB response bound. They verify that credentials are accepted and the selected
+model is visible. They do not generate text, test generation quotas/billing, or
+prove structured-output compatibility. One test runs at a time, without automatic
+retries. Keys travel in provider headers, never URL query strings, and raw provider
+errors are not returned.
+
+Implementation: `app/services/llm_configuration.py` stores local profiles,
+`app/integrations/llm_connection.py` checks provider access, and `app/api/llm.py`
+exposes the API. `app/api/json_routes.py` now shares bounded JSON handling with PR
+previews. Tests use temporary files and HTTPX MockTransport, with no real keys.
+
+Official metadata endpoints: [OpenAI](https://developers.openai.com/api/reference/resources/models/methods/retrieve/),
+[Anthropic](https://platform.claude.com/docs/en/api/models/retrieve), and
+[Gemini](https://aistudio.google.com/api-reference/models/get-model).
+
 ## Verify
 
 ```powershell

@@ -18,6 +18,8 @@ htmlcov/
 *.p12
 *.pfx
 .aws/
+backend/.llm-settings.json
+backend/.llm-settings-*.tmp
 
 # Frontend dependencies and build output
 node_modules/

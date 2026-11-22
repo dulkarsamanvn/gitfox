@@ -1,17 +1,22 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.api.llm import create_llm_router
 from app.api.pull_requests import create_pull_requests_router
 from app.core.config import Settings, get_settings
 from app.db.database import Database
+from app.services.llm_configuration import LLM_SETTINGS_PATH
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, llm_settings_path: Path = LLM_SETTINGS_PATH
+) -> FastAPI:
     settings = settings if settings is not None else get_settings()
     database = Database(settings.database_url)
 
@@ -36,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type"],
     )
     application.include_router(create_pull_requests_router(settings))
+    application.include_router(create_llm_router(settings, llm_settings_path))
 
     @application.get("/")
     def home() -> dict[str, str]:

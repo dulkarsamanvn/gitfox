@@ -1,22 +1,17 @@
 """Read-only PR previews using the GitHub reader and local patch selector."""
 
-from collections.abc import Callable, Coroutine
-from typing import Any
-
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from starlette.exceptions import HTTPException
-from starlette.types import Message
 
+from app.api.json_routes import SafeJSONRoute
+from app.api.json_routes import api_error as _error
 from app.core.config import Settings
 from app.integrations.github import GitHubClient, GitHubClientError, PullRequestMetadata
 from app.integrations.github_url import InvalidPullRequestURL, parse_pull_request_url
 from app.services.diff_selection import DiffSelection, select_diffs
 
-_MAX_REQUEST_BYTES = 4096
 _GITHUB_ERRORS = {
     "github_not_found": (404, "Pull request not found. Check the URL and use a public repository."),
     "github_private_repository": (422, "Only public GitHub repositories are supported."),
@@ -64,61 +59,17 @@ class PreviewErrorResponse(BaseModel):
     detail: PreviewErrorDetail
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=status,
-        content={"detail": {"code": code, "message": message}},
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 def _invalid_request() -> JSONResponse:
     return _error(422, "invalid_request", "Send a JSON object containing only a pr_url string.")
 
 
-class _PreviewRoute(APIRoute):
+class _PreviewRoute(SafeJSONRoute):
     """Bound input before JSON parsing and omit raw input from validation errors."""
 
-    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
-        handler = super().get_route_handler()
-
-        async def bounded_handler(request: Request) -> Response:
-            media_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
-            if media_type != "application/json":
-                return _error(415, "unsupported_media_type", "Use Content-Type: application/json.")
-            body = bytearray()
-            async for chunk in request.stream():
-                if len(body) + len(chunk) > _MAX_REQUEST_BYTES:
-                    return _error(
-                        413, "request_too_large", "Request body must not exceed 4096 bytes."
-                    )
-                body.extend(chunk)
-
-            # Replay the bounded body through Request's public receive interface,
-            # so FastAPI still performs normal Pydantic validation and docs generation.
-            received = False
-
-            async def receive() -> Message:
-                nonlocal received
-                if received:
-                    return await request.receive()
-                received = True
-                return {"type": "http.request", "body": bytes(body), "more_body": False}
-
-            try:
-                response = await handler(Request(request.scope, receive=receive))
-            except RequestValidationError as exc:
-                if any(error.get("loc") == ("body", "pr_url") for error in exc.errors()):
-                    return _error(422, "invalid_pr_url", str(InvalidPullRequestURL()))
-                return _invalid_request()
-            except HTTPException as exc:
-                if exc.status_code == 400:  # Includes invalid JSON encodings.
-                    return _invalid_request()
-                raise
-            response.headers["Cache-Control"] = "no-store"
-            return response
-
-        return bounded_handler
+    def invalid_request(self, error: RequestValidationError | None = None) -> JSONResponse:
+        if error and any(item.get("loc") == ("body", "pr_url") for item in error.errors()):
+            return _error(422, "invalid_pr_url", str(InvalidPullRequestURL()))
+        return _invalid_request()
 
 
 def create_pull_requests_router(settings: Settings) -> APIRouter:
