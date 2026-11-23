@@ -62,6 +62,11 @@ or Google Gemini, enter a model ID and API key, test access, and save the select
 Keys stay on the local backend and are never returned by the settings API. The
 connection test checks model metadata without generating text.
 
+PR previews now run through a two-node LangGraph workflow: fetch PR files, then
+select diffs. The API and frontend still return the same preview. See the
+[workflow walkthrough](backend/README.md#first-langgraph-workflow) for nodes,
+edges, state updates, and execution examples.
+
 The backend also defines validated AI review-result schemas for summaries and
 findings. AI review generation and saved-review reuse are planned next; see the
 [result contract](backend/README.md#ai-review-result-schemas) and

@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 
-from app.api import pull_requests
 from app.core.config import Settings
 from app.integrations.github import GitHubClient, GitHubClientError
 from app.main import create_app
+from app.workflows import pr_preview
 
 pytestmark = pytest.mark.anyio
 ENDPOINT = "/api/v1/pull-requests/preview"
@@ -67,7 +67,7 @@ def upstream(monkeypatch: pytest.MonkeyPatch) -> dict:
         state["settings"].append(settings)
         return GitHubClient(settings, transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr(pull_requests, "GitHubClient", factory)
+    monkeypatch.setattr(pr_preview, "GitHubClient", factory)
     return state
 
 
@@ -291,7 +291,7 @@ async def test_maps_github_errors_to_safe_http_responses(
     github = AsyncMock(spec=GitHubClient)
     github.__aenter__.return_value = github
     github.get_pull_request_files.side_effect = GitHubClientError(code, "fake-upstream-secret")
-    monkeypatch.setattr(pull_requests, "GitHubClient", Mock(return_value=github))
+    monkeypatch.setattr(pr_preview, "GitHubClient", Mock(return_value=github))
 
     response = await client.post(ENDPOINT, json={"pr_url": PR_URL})
 

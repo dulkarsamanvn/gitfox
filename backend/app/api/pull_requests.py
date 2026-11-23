@@ -8,9 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.api.json_routes import SafeJSONRoute
 from app.api.json_routes import api_error as _error
 from app.core.config import Settings
-from app.integrations.github import GitHubClient, GitHubClientError, PullRequestMetadata
+from app.integrations.github import GitHubClientError, PullRequestMetadata
 from app.integrations.github_url import InvalidPullRequestURL, parse_pull_request_url
-from app.services.diff_selection import DiffSelection, select_diffs
+from app.services.diff_selection import DiffSelection
+from app.workflows.pr_preview import build_pr_preview_graph
 
 _GITHUB_ERRORS = {
     "github_not_found": (404, "Pull request not found. Check the URL and use a public repository."),
@@ -73,6 +74,7 @@ class _PreviewRoute(SafeJSONRoute):
 
 
 def create_pull_requests_router(settings: Settings) -> APIRouter:
+    preview_graph = build_pr_preview_graph(settings)
     router = APIRouter(
         prefix="/api/v1/pull-requests", tags=["pull requests"], route_class=_PreviewRoute
     )
@@ -101,14 +103,12 @@ def create_pull_requests_router(settings: Settings) -> APIRouter:
     ) -> PullRequestPreviewResponse | JSONResponse:
         """Fetch metadata and select patches. No AI analysis or database writes."""
         try:
-            async with GitHubClient(settings) as github:
-                fetched = await github.get_pull_request_files(payload.pr_url)
+            result = await preview_graph.ainvoke({"pr_url": payload.pr_url})
         except GitHubClientError as exc:
             # Keep the public API message independent of any upstream error text.
             code = exc.code if exc.code in _GITHUB_ERRORS else "github_request_failed"
             status, message = _GITHUB_ERRORS[code]
             return _error(status, code, message)
-        selection = select_diffs(fetched.files, settings=settings)
-        return PullRequestPreviewResponse(metadata=fetched.metadata, selection=selection)
+        return PullRequestPreviewResponse(**result)
 
     return router

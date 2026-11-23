@@ -380,10 +380,10 @@ $preview.selection
 ```
 
 The implementation is in `app/api/pull_requests.py`, registered by `app/main.py`.
-The route receives validated JSON, opens a GitHub client using the application's
-settings, fetches files, closes the client, and calls `select_diffs` with the same
-settings. The request accepts only `pr_url`; extra fields are rejected. URLs are
-normalized with the existing strict parser before any GitHub request.
+The route receives validated JSON and invokes the LangGraph workflow described
+below. Its nodes fetch files and select patches using the application's settings.
+The request accepts only `pr_url`; extra fields are rejected. URLs are normalized
+with the existing strict parser before any GitHub request.
 
 The preview route bounds the incoming body to 4096 bytes before FastAPI parses
 JSON. It requires `Content-Type: application/json` and caps `pr_url` at 2048
@@ -426,6 +426,88 @@ Endpoint tests use the real GitHub reader and patch selector with HTTPX MockTran
 plus ASGITransport for HTTP requests. The route and response schemas follow FastAPI's
 [custom route](https://fastapi.tiangolo.com/how-to/custom-request-and-route/) and
 [response model](https://fastapi.tiangolo.com/tutorial/response-model/) documentation.
+
+## First LangGraph workflow
+
+`app/workflows/pr_preview.py` coordinates the existing reader and selector:
+
+```mermaid
+flowchart LR
+    START([START]) --> fetch_pr
+    fetch_pr --> select_diffs
+    select_diffs --> END([END])
+```
+
+A **node** is a Python function that performs a step. `fetch_pr` opens a GitHub
+client, awaits `get_pull_request_files`, closes the client, and returns metadata
+and files. `select_diffs` runs the existing local selector with the same settings.
+An **edge** defines which node runs next. These edges always follow the sequence
+above; conditional routing and model calls will be added in later steps.
+
+**State** is the data passed through one execution. These are the fields after
+each step:
+
+| Step | Available state |
+|---|---|
+| Start | `pr_url` |
+| After `fetch_pr` | `pr_url`, `metadata`, `files` |
+| After `select_diffs` | `pr_url`, `metadata`, `files`, `selection` |
+
+Nodes return partial updates, not a replacement for the whole state. For example,
+the selector returns only `{"selection": ...}`; metadata remains available. Each
+field uses LangGraph's default replacement rule when updated. We do not need an
+append reducer for this sequential workflow.
+
+`PreviewInput`, `PreviewState`, and `PreviewOutput` are `TypedDict` definitions:
+they describe the state for Python tooling, rather than performing Pydantic-style
+runtime validation. Request, GitHub data, and HTTP response validation still use
+the existing Pydantic models. The graph's output schema returns only `metadata`
+and `selection`, keeping the intermediate file list out of the final result.
+Settings, API keys, and the GitHub client are not state fields.
+
+`build_pr_preview_graph(settings)` calls `compile()` when the application creates
+its router. Compilation prepares the graph; it does not fetch a PR. Each HTTP
+request then executes that shared graph with fresh state:
+
+```python
+result = await preview_graph.ainvoke({"pr_url": payload.pr_url})
+```
+
+The route converts the result into the existing response model. GitHub errors
+still become the same safe HTTP errors. A failed fetch stops execution before
+selection, and the async context manager closes the GitHub client on failure or
+cancellation too.
+
+For learning, `astream` can execute the same graph and expose each node's update.
+Inside an async function with a graph and PR URL, print only the changed field
+names rather than source content:
+
+```python
+async for update in preview_graph.astream({"pr_url": pr_url}, stream_mode="updates"):
+    for node, changes in update.items():
+        print(node, sorted(changes))
+
+# fetch_pr ['files', 'metadata']
+# select_diffs ['selection']
+```
+
+Both `ainvoke` and `astream` start an execution; using both fetches the PR twice.
+This graph has no checkpointer or result cache. State remains in memory during
+execution, and subsequent requests fetch again. It performs no AI generation or
+database writes, and needs no model key or LangSmith account.
+
+Install the updated dependencies and run the focused tests from `backend`:
+
+```powershell
+.\env\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\env\Scripts\python.exe -m pytest tests/test_pr_preview_workflow.py tests/test_pr_preview.py -q
+```
+
+Graph tests inspect node updates, output filtering, selection limits, errors,
+cancellation, and isolation between executions. Endpoint tests run the real graph
+with mocked GitHub HTTP responses. See the official
+[Graph API guide](https://docs.langchain.com/oss/python/langgraph/graph-api)
+for state updates, nodes, edges, compilation, and execution.
 
 ## AI review result schemas
 
