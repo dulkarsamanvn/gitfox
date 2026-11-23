@@ -62,8 +62,9 @@ or Google Gemini, enter a model ID and API key, test access, and save the select
 Keys stay on the local backend and are never returned by the settings API. The
 connection test checks model metadata without generating text.
 
-PR previews now run through a two-node LangGraph workflow: fetch PR files, then
-select diffs. The API and frontend still return the same preview. See the
+PR previews run through LangGraph: fetch PR files, select diffs, and prepare AI
+input only when patches were selected. Empty selections finish immediately.
+The API and frontend still return the same preview. See the
 [workflow walkthrough](backend/README.md#first-langgraph-workflow) for nodes,
 edges, state updates, and execution examples.
 

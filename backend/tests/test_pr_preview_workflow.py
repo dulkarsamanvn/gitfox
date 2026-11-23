@@ -1,6 +1,7 @@
 """Exercise real graph execution with an isolated, mocked GitHub boundary."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -58,13 +59,21 @@ async def test_streams_ordered_node_updates_and_applies_selection_settings(
 
     updates = [update async for update in graph.astream({"pr_url": PR_URL}, stream_mode="updates")]
 
-    assert [list(update) for update in updates] == [["fetch_pr"], ["select_diffs"]]
+    assert [list(update) for update in updates] == [
+        ["fetch_pr"],
+        ["select_diffs"],
+        ["prepare_review_input"],
+    ]
     assert updates[0]["fetch_pr"] == {"metadata": fetched.metadata, "files": fetched.files}
     selection = updates[1]["select_diffs"]["selection"]
     assert [file.filename for file in selection.selected] == ["src/first.py"]
     assert [(file.filename, file.reason) for file in selection.skipped] == [
         ("src/second.py", "file_limit_exceeded")
     ]
+    review_input = updates[2]["prepare_review_input"]["review_input"]
+    content = json.loads(review_input.user_content)
+    assert [file["file_path"] for file in content["files"]] == ["src/first.py"]
+    assert content["coverage"] == {"files_seen": 2, "files_selected": 1, "files_skipped": 1}
     pr_preview.GitHubClient.assert_called_once_with(settings)
     github.get_pull_request_files.assert_awaited_once_with(PR_URL)
     github.__aexit__.assert_awaited_once()
@@ -87,15 +96,20 @@ async def test_final_output_keeps_metadata_and_selection_without_intermediate_st
 
 @pytest.mark.parametrize("files", [(), (_file("logo.png"),)])
 async def test_empty_or_all_skipped_inputs_complete_normally(
-    github: AsyncMock, files: tuple[PullRequestFile, ...]
+    github: AsyncMock, files: tuple[PullRequestFile, ...], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     github.get_pull_request_files.return_value = _fetched(files=files)
+    preparer = Mock(side_effect=AssertionError("Empty selections must not prepare AI input"))
+    monkeypatch.setattr(pr_preview, "build_review_input", preparer)
     graph = pr_preview.build_pr_preview_graph(Settings(_env_file=None))
 
-    result = await graph.ainvoke({"pr_url": PR_URL})
+    updates = [update async for update in graph.astream({"pr_url": PR_URL}, stream_mode="updates")]
 
-    assert result["selection"].selected == ()
-    assert result["selection"].files_seen == result["selection"].files_skipped == len(files)
+    assert [list(update) for update in updates] == [["fetch_pr"], ["select_diffs"]]
+    selection = updates[-1]["select_diffs"]["selection"]
+    assert selection.selected == ()
+    assert selection.files_seen == selection.files_skipped == len(files)
+    preparer.assert_not_called()
 
 
 async def test_failed_fetch_closes_client_and_does_not_select(
@@ -131,19 +145,25 @@ async def test_shared_graph_isolates_concurrent_and_later_invocations(github: As
     graph = pr_preview.build_pr_preview_graph(Settings(_env_file=None))
     urls = [PR_URL, PR_URL.replace("/42", "/43")]
 
-    results = await asyncio.wait_for(
-        asyncio.gather(*(graph.ainvoke({"pr_url": url}) for url in urls)), timeout=5
-    )
+    async def run(pr_url: str) -> dict:
+        states = [state async for state in graph.astream({"pr_url": pr_url}, stream_mode="values")]
+        return states[-1]
+
+    results = await asyncio.wait_for(asyncio.gather(*(run(url) for url in urls)), timeout=5)
     for number, result in zip((42, 43), results, strict=True):
         assert result["metadata"].pr_number == number
         assert [file.filename for file in result["selection"].selected] == [f"src/pr_{number}.py"]
+        content = json.loads(result["review_input"].user_content)
+        assert content["pull_request"]["pr_number"] == number
+        assert [file["file_path"] for file in content["files"]] == [f"src/pr_{number}.py"]
 
     github.get_pull_request_files.side_effect = None
     github.get_pull_request_files.return_value = _fetched()
-    later = await graph.ainvoke({"pr_url": PR_URL})
+    later = await run(PR_URL)
     assert later["metadata"].pr_number == 42
     assert later["selection"].files_seen == 0
     assert later["selection"].selected == ()
+    assert "review_input" not in later
     assert github.get_pull_request_files.await_count == 3
 
 

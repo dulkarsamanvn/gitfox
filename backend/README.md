@@ -429,20 +429,23 @@ plus ASGITransport for HTTP requests. The route and response schemas follow Fast
 
 ## First LangGraph workflow
 
-`app/workflows/pr_preview.py` coordinates the existing reader and selector:
+`app/workflows/pr_preview.py` coordinates the reader, selector, and AI input builder:
 
 ```mermaid
 flowchart LR
     START([START]) --> fetch_pr
     fetch_pr --> select_diffs
-    select_diffs --> END([END])
+    select_diffs --> decision{Any selected patches?}
+    decision -->|Yes| prepare_review_input
+    decision -->|No| END([END])
+    prepare_review_input --> END
 ```
 
 A **node** is a Python function that performs a step. `fetch_pr` opens a GitHub
 client, awaits `get_pull_request_files`, closes the client, and returns metadata
 and files. `select_diffs` runs the existing local selector with the same settings.
-An **edge** defines which node runs next. These edges always follow the sequence
-above; conditional routing and model calls will be added in later steps.
+An **edge** defines which node runs next. After selection, a conditional edge
+chooses whether to prepare AI input or finish. Model calls will be added later.
 
 **State** is the data passed through one execution. These are the fields after
 each step:
@@ -452,6 +455,7 @@ each step:
 | Start | `pr_url` |
 | After `fetch_pr` | `pr_url`, `metadata`, `files` |
 | After `select_diffs` | `pr_url`, `metadata`, `files`, `selection` |
+| After `prepare_review_input`, when selected patches exist | The fields above, plus `review_input` |
 
 Nodes return partial updates, not a replacement for the whole state. For example,
 the selector returns only `{"selection": ...}`; metadata remains available. Each
@@ -462,7 +466,8 @@ append reducer for this sequential workflow.
 they describe the state for Python tooling, rather than performing Pydantic-style
 runtime validation. Request, GitHub data, and HTTP response validation still use
 the existing Pydantic models. The graph's output schema returns only `metadata`
-and `selection`, keeping the intermediate file list out of the final result.
+and `selection`, keeping the intermediate file list and prepared AI input out of
+the final result.
 Settings, API keys, and the GitHub client are not state fields.
 
 `build_pr_preview_graph(settings)` calls `compile()` when the application creates
@@ -489,6 +494,7 @@ async for update in preview_graph.astream({"pr_url": pr_url}, stream_mode="updat
 
 # fetch_pr ['files', 'metadata']
 # select_diffs ['selection']
+# prepare_review_input ['review_input']  # Only when patches were selected.
 ```
 
 Both `ainvoke` and `astream` start an execution; using both fetches the PR twice.
@@ -504,10 +510,74 @@ Install the updated dependencies and run the focused tests from `backend`:
 ```
 
 Graph tests inspect node updates, output filtering, selection limits, errors,
-cancellation, and isolation between executions. Endpoint tests run the real graph
+cancellation, both routing paths, and isolation between executions. Endpoint tests run the real graph
 with mocked GitHub HTTP responses. See the official
 [Graph API guide](https://docs.langchain.com/oss/python/langgraph/graph-api)
 for state updates, nodes, edges, compilation, and execution.
+
+## Conditional routing and AI input
+
+The routing function is an ordinary Python decision that reads state:
+
+```python
+def route_after_selection(state: PreviewState) -> Literal["prepare", "finish"]:
+    if state["selection"].selected:
+        return "prepare"
+    return "finish"
+```
+
+`selected` is a tuple. A nonempty tuple takes the first branch; an empty tuple
+takes the second. The router returns a route label, without changing state or
+calling a model. `add_conditional_edges` maps that label to its destination:
+
+```python
+builder.add_conditional_edges(
+    "select_diffs",
+    route_after_selection,
+    {"prepare": "prepare_review_input", "finish": END},
+)
+```
+
+For a Python patch, execution reaches `prepare_review_input`. For a PR containing
+only images, missing patches, or otherwise ineligible changes, it finishes after
+selection with the existing skipped-file reasons. The old unconditional edge
+from selection to `END` is replaced by this conditional edge.
+
+`app/services/review_input.py` contains the pure `build_review_input` function.
+It builds a provider-independent `ReviewInput` object with:
+
+- `system_prompt`: fixed reviewer instructions, including the evidence and scope rules.
+- `user_content`: JSON containing PR identity, base/head SHAs, coverage counts, and
+  selected files with their unchanged patches. Skipped paths and patches are omitted.
+- `response_schema`: JSON Schema exported from the existing `ReviewAnalysis` model.
+- `prompt_version` and `schema_version`: explicit versions for this input contract.
+
+The prompt is the instructions and material we will send to a model. Repository
+content stays in the user data rather than being inserted into the system
+instructions. JSON preserves paths, quotes, Unicode, indentation, and patch line
+endings. This separation and the instructions help define the task; they do not
+guarantee that a future model will ignore malicious instructions or produce correct
+findings. Output validation and evaluation remain necessary.
+
+The builder receives no settings, credentials, or provider client. It rejects
+empty selections as an internal guard. The graph stores the prepared input only
+in its current execution state, ready for a future analysis node. Its source-bearing
+fields are hidden from object `repr`; explicit serialization still contains them,
+so the learning trace above prints field names only. The preview response still
+contains just `metadata` and `selection`, and no AI request is sent or saved.
+
+The existing patch character limits still apply. JSON, instructions, and schema
+add overhead; these are not model token limits. Provider-specific token budgeting,
+model calls, and finding validation come in subsequent steps.
+
+Run the focused preparation and graph tests from `backend`:
+
+```powershell
+.\env\Scripts\python.exe -m pytest tests/test_review_input.py tests/test_pr_preview_workflow.py tests/test_pr_preview.py -q
+```
+
+The official [conditional edges guide](https://docs.langchain.com/oss/python/langgraph/graph-api#conditional-edges)
+explains routing functions and destination maps.
 
 ## AI review result schemas
 
